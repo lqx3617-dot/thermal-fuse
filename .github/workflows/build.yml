@@ -42,7 +42,13 @@ jobs:
 
       - name: 装 iOS SDK
         run: |
-          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          # theos 自带空的 sdks 目录，不能直接 clone 进去；
+          # 用 sparse checkout 只拿 16.5（整库一个多 G）
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/theos/sdks.git /tmp/sdks-repo
+          cd /tmp/sdks-repo
+          git sparse-checkout set iPhoneOS16.5.sdk
+          mv iPhoneOS*.sdk "$THEOS/sdks/"
           ls "$THEOS/sdks"
 
       - name: 编译 roothide deb
