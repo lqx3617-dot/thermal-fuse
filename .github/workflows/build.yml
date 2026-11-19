@@ -8,28 +8,45 @@ on:
 
 jobs:
   roothide:
-    runs-on: macos-14
+    # macOS runner 在这个账号上分配不到（job 秒 cancelled），
+    # 所以走 Linux + theos 官方 Linux 工具链，编出来的 Mach-O 完全一样。
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - name: 装依赖
-        run: brew install ldid dpkg xz
-
-      - name: 装 RootHide 版 Theos + iOS SDK
         run: |
-          git clone --recursive --depth 1 https://github.com/roothide/theos.git "$HOME/theos-rh"
-          SDK=$(ls -d /Applications/Xcode*.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk | tail -1)
-          mkdir -p "$HOME/theos-rh/sdks"
-          cp -R "$SDK" "$HOME/theos-rh/sdks/"
-          ls "$HOME/theos-rh/sdks"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential fakeroot rsync curl perl zip unzip git \
+            libxml2 libtinfo5 ldid dpkg-dev xz-utils ca-certificates
+          ldid -v 2>&1 | head -2 || true
+
+      - name: 装 RootHide 版 Theos
+        run: |
+          git clone --recursive --depth 1 --shallow-submodules \
+            https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: 装 iOS 工具链
+        run: |
+          curl -sL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
+            | tar -xJ -C "$THEOS/toolchain/"
+          "$THEOS/toolchain/linux/iphone/bin/clang" --version | head -2
+          ls "$THEOS/toolchain/linux/iphone/bin" | head
+
+      - name: 装 iOS SDK
+        run: |
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          ls "$THEOS/sdks"
 
       - name: 编译 roothide deb
         run: |
-          export THEOS="$HOME/theos-rh"
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+          export PATH="$THEOS/bin:$PATH"
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide 2>&1 | tail -40
           echo "--- packages ---"
           ls -l packages/
-          dpkg-deb -c packages/*.deb | head -30
+          dpkg-deb -c packages/*.deb
 
       - name: 传成品
         uses: actions/upload-artifact@v4
