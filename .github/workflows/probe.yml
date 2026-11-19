@@ -1,0 +1,25 @@
+name: probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 环境
+        run: |
+          uname -a
+          nproc
+          df -h / | tail -1
+          echo "ubuntu runner ok"
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: 环境
+        run: |
+          uname -a
+          sw_vers
+          xcodebuild -version
+          echo "macos runner ok"
