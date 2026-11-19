@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>温控解除</string>
+			<key>footerText</key>
+			<string>改完重启用户空间，或 killall thermalmonitord，才生效。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>启用插件</string>
+			<key>key</key>
+			<string>enabled</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<true/>
+			<key>PostNotification</key>
+			<string>com.lqx3617.thermalfuse/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>强制 nominal 模拟模式</string>
+			<key>key</key>
+			<string>forceNominal</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<true/>
+			<key>PostNotification</key>
+			<string>com.lqx3617.thermalfuse/reload</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>屏蔽温度传感器上报</string>
+			<key>key</key>
+			<string>blockSensorEvents</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>改写 ThermalMonitor 配置</string>
+			<key>key</key>
+			<string>patchThermalPlist</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>关闭 CPMS 缓解（激进）</string>
+			<key>key</key>
+			<string>blockMitigation</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<false/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>背光功率上限</string>
+			<key>footerText</key>
+			<string>留空或 0 = 不改写。单位与系统 plist 一致（mW 量级）。填了会把 maxThermalPower / minThermalPower 都钉成这个值。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSEditTextCell</string>
+			<key>label</key>
+			<string>功率值</string>
+			<key>key</key>
+			<string>cpuMaxPower</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<string></string>
+			<key>placeholder</key>
+			<string>仅数字，0 表示不改</string>
+			<key>keyboard</key>
+			<string>numbers</string>
+			<key>isNumeric</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>调试</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>输出日志</string>
+			<key>key</key>
+			<string>verbose</string>
+			<key>defaults</key>
+			<string>com.lqx3617.thermalfuse</string>
+			<key>default</key>
+			<false/>
+		</dict>
+	</array>
+</dict>
+</plist>

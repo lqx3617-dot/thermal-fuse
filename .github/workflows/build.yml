@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  roothide:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装依赖
+        run: brew install ldid dpkg xz
+
+      - name: 装 RootHide 版 Theos + iOS SDK
+        run: |
+          git clone --recursive --depth 1 https://github.com/roothide/theos.git "$HOME/theos-rh"
+          SDK=$(ls -d /Applications/Xcode*.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk | tail -1)
+          mkdir -p "$HOME/theos-rh/sdks"
+          cp -R "$SDK" "$HOME/theos-rh/sdks/"
+          ls "$HOME/theos-rh/sdks"
+
+      - name: 编译 roothide deb
+        run: |
+          export THEOS="$HOME/theos-rh"
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+          echo "--- packages ---"
+          ls -l packages/
+          dpkg-deb -c packages/*.deb | head -30
+
+      - name: 传成品
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThermalFuse-deb
+          path: packages/*.deb
+
+      - name: 打 tag 就发 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*.deb

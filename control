@@ -1,0 +1,9 @@
+Package: com.lqx3617.thermalfuse
+Name: ThermalFuse
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 解除 iOS 温控降频（Relaxin / RootHide 用）
+Maintainer: lqx3617
+Author: lqx3617
+Section: Tweaks
+Depends: firmware (>= 15.0), ellekit | mobilesubstrate
