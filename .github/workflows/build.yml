@@ -19,8 +19,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential fakeroot rsync curl perl zip unzip git \
-            libxml2 libtinfo5 ldid dpkg-dev xz-utils ca-certificates
-          ldid -v 2>&1 | head -2 || true
+            libxml2 libtinfo5 dpkg-dev xz-utils ca-certificates
+          # Ubuntu 仓库里没有 ldid，用 Procursus 官方 linux 二进制
+          curl -sL -o /tmp/ldid \
+            https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus8/ldid_linux_x86_64
+          chmod +x /tmp/ldid
+          sudo mv /tmp/ldid /usr/local/bin/ldid
+          ldid -v 2>&1 | head -2
 
       - name: 装 RootHide 版 Theos
         run: |
