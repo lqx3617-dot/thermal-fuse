@@ -135,16 +135,29 @@ static void TFInstallDictHook(void) {
 }
 
 // 这四个是降频的执行动作，留空等于让它算完不落地
-- (void)tryTakeAction { TFLog(@"tryTakeAction 拦下"); }
-- (void)simulateLightThermalPressure { TFLog(@"simulateLightThermalPressure 拦下"); }
-- (void)updatePowerzoneTelemetry {}
-- (void)handleMCSThermalPressure {}
+- (void)tryTakeAction {
+    TFLog(@"tryTakeAction 拦下");
+}
+
+- (void)simulateLightThermalPressure {
+    TFLog(@"simulateLightThermalPressure 拦下");
+}
+
+- (void)updatePowerzoneTelemetry {
+}
+
+- (void)handleMCSThermalPressure {
+}
 
 // 上报给系统的压力等级永远最小
-- (int64_t)thermalPressureLevel { return 0; }
+- (int64_t)thermalPressureLevel {
+    return 0;
+}
 
 // 写内核的热状态永远是 0（nominal）
-- (void)setThermalState:(int)a3 { %orig(0); }
+- (void)setThermalState:(int)a3 {
+    %orig(0);
+}
 
 %end
 %end
@@ -153,7 +166,9 @@ static void TFInstallDictHook(void) {
 %hook HidSensors
 
 // 温度传感器的上报通道，堵住之后 thermalmonitord 收不到新温度
-- (void)handleTemperatureEvent:(int)a3 service:(id)a4 { TFLog(@"传感器事件 pid=%d 已吞", a3); }
+- (void)handleTemperatureEvent:(int)a3 service:(id)a4 {
+    TFLog(@"传感器事件 pid=%d 已吞", a3);
+}
 
 %end
 %end
@@ -161,9 +176,15 @@ static void TFInstallDictHook(void) {
 %group Mitigation
 %hook MitigationController
 
-- (void)setCPMSMitigationsEnabled:(BOOL)a3 { %orig(NO); }
-- (void)updateCPU {}
-- (void)updateGPU {}
+- (void)setCPMSMitigationsEnabled:(BOOL)a3 {
+    %orig(NO);
+}
+
+- (void)updateCPU {
+}
+
+- (void)updateGPU {
+}
 
 %end
 %end

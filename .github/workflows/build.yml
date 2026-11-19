@@ -59,6 +59,18 @@ jobs:
           ls -l packages/
           dpkg-deb -c packages/*.deb
 
+      - name: 诊断（失败时打印预处理结果）
+        if: failure()
+        run: |
+          echo "=== .theos 中间文件 ==="
+          find .theos -name "*Tweak*" -o -name "*.mm" | head -20
+          for f in $(find .theos -name "Tweak*" -size -2M | head -5); do
+            echo "===== $f ====="
+            sed -n '1,40p' "$f"
+            echo "  ... 关键字行 ..."
+            grep -n "%hook\|%end\|_logos_method\|_logos_orig\|%ctor" "$f" | head -40
+          done
+
       - name: 传成品
         uses: actions/upload-artifact@v4
         with:
