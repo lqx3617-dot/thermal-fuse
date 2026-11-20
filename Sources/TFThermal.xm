@@ -1,5 +1,6 @@
 // ThermalFuse — thermalmonitord 侧：档位引擎、定时切档、自检、温控解除
 #import "TFCore.h"
+#import <substrate.h>
 #import <objc/runtime.h>
 
 static CommonProduct *gProduct = nil;
