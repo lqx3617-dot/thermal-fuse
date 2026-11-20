@@ -54,7 +54,8 @@ jobs:
       - name: 编译 roothide deb
         run: |
           export PATH="$THEOS/bin:$PATH"
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide 2>&1 | tail -40
+          set -o pipefail
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide 2>&1 | tee /tmp/build.log | tail -120
           echo "--- packages ---"
           ls -l packages/
           dpkg-deb -c packages/*.deb

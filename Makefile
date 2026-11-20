@@ -5,7 +5,7 @@ INSTALL_TARGET_PROCESSES = thermalmonitord
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = ThermalFuse
-ThermalFuse_FILES = Sources/Tweak.m
+ThermalFuse_FILES = Sources/Tweak.xm
 ThermalFuse_CFLAGS = -fobjc-arc -ISources
 ThermalFuse_FRAMEWORKS = Foundation UIKit
 
