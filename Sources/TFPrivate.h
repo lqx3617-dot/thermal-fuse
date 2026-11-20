@@ -15,6 +15,7 @@
 - (int)arcVirtualTemperature;
 - (int)arcModuleTemperature;
 - (int)gasGaugeBatteryTemperature;
+- (int)getFrontDisplayCenterTemperature;
 @end
 
 @interface HidSensors : NSObject
@@ -23,7 +24,33 @@
 
 @interface MitigationController : NSObject
 - (void)setCPMSMitigationsEnabled:(BOOL)a3;
+- (int)CPULevel;
+- (int)CPUPower;
+- (int)GPUPower;
+- (int)getCPUTargetPower;
+- (int)getGPUTargetPower;
+- (int)getCurrentCPUPower;
+- (int)getCurrentGPUPower;
+- (int)getCurrentPackagePower;
+- (int)getPackageTargetPower;
+- (int)getPackagePowerZoneMetric;
+- (void)setCPUPowerCeiling:(int)a3 fromDecisionSource:(int)a4;
+- (void)setCPUPowerFloor:(int)a3 fromDecisionSource:(int)a4;
+- (void)setGPUPowerCeiling:(int)a3 fromDecisionSource:(int)a4;
 - (void)setPackagePowerCeiling:(int)a3 fromDecisionSource:(int)a4;
+- (void)setPackagePowerFloor:(int)a3 fromDecisionSource:(int)a4;
+- (void)setMaxPackagePower:(int)a3;
+- (void)setMaxGraphicsDrivePowerTarget:(int)a3;
+- (void)setCPUPowerZoneTarget:(int)a3;
+- (void)setGPUPowerZoneTarget:(int)a3;
+- (void)setPackagePowerZoneTarget;
 - (void)updateCPU;
 - (void)updateGPU;
+- (void)updatePackage;
+@end
+
+@interface CPMSHelper : NSObject
++ (id)sharedInstance;
+- (unsigned)getMaxPowerForComponent:(int)a3;
+- (unsigned)getMinPowerForComponent:(int)a3;
 @end
