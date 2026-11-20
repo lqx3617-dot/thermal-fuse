@@ -88,8 +88,26 @@ ps aux | grep thermalmonitord
 
 ## 构建
 
+本机（Ubuntu / macOS 都行）：
+
 ```sh
+export THEOS=~/theos          # roothide/theos fork
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
 ```
 
-推 GitHub 后 Actions 自动编，产物在 Artifacts / Release。
+产物：`packages/com.lqx3617.thermalfuse_<版本>_iphoneos-arm64e.deb`。
+
+注意两个 roothide 特有的点：
+
+1. Architecture 是 `iphoneos-arm64e`，不是 `iphoneos-arm64`。这是 roothide 的约定
+   （`vendor/mod/roothide/package/deb.mk` 里写死的），RootHide 的 dpkg 靠这个字段
+   认出「这是 jbroot 的包」再做路径重映射，改成 arm64 反而装不上。
+2. 包内路径写成 `Library/MobileSubstrate/...`，没有 `/var/jb` 前缀。同样是故意的，
+   前缀由 RootHide 安装时补，写死前缀会让重映射错位。
+
+## CI
+
+GitHub Actions 用 `ubuntu-22.04` + theos 官方 Linux 工具链编（macOS runner 在这个
+账号上分配不到，job 会秒 cancelled）。流程：apt 依赖 → roothide/theos →
+`iOSToolchain-x86_64` → sparse checkout 只取 iPhoneOS16.5.sdk → make package。
+打了 `v*` tag 会自动发 Release。
