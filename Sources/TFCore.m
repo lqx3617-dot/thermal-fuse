@@ -22,8 +22,17 @@ NSString *TFPath(NSString *p) {
 }
 
 void TFReloadPrefs(void) {
-    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:TFPath(@TF_PREFS_PATH)];
-    gPrefs = [d isKindOfClass:[NSDictionary class]] ? d : @{};
+    NSMutableDictionary *merged = [NSMutableDictionary dictionary];
+
+    // RootHide 里那份（tweak 写的）
+    NSDictionary *inJb = [NSDictionary dictionaryWithContentsOfFile:TFPath(@TF_PREFS_PATH)];
+    if ([inJb isKindOfClass:[NSDictionary class]]) [merged addEntriesFromDictionary:inJb];
+
+    // 设置面板经 cfprefsd 写的真实路径那份，优先
+    NSDictionary *real = [NSDictionary dictionaryWithContentsOfFile:@TF_PREFS_PATH];
+    if ([real isKindOfClass:[NSDictionary class]]) [merged addEntriesFromDictionary:real];
+
+    gPrefs = merged;
     gVerbose = [gPrefs[@"verbose"] boolValue];
 }
 
@@ -62,7 +71,12 @@ NSString *TFStr(NSString *key, NSString *def) {
 
 void TFWriteLive(NSDictionary *d) {
     if (![d isKindOfClass:[NSDictionary class]]) return;
-    [d writeToFile:TFPath(@TF_LIVE_PATH) atomically:YES];
+    NSString *jb = TFPath(@TF_LIVE_PATH);
+    [d writeToFile:jb atomically:YES];
+    // 设置面板在沙盒里看不到 jbroot，真实路径也写一份
+    if (![jb isEqualToString:@TF_LIVE_PATH]) {
+        [d writeToFile:@TF_LIVE_PATH atomically:YES];
+    }
 }
 
 void TFPostNotify(const char *name) {

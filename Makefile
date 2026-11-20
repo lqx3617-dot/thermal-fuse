@@ -11,5 +11,8 @@ ThermalFuse_FRAMEWORKS = Foundation UIKit
 
 include $(THEOS)/makefiles/tweak.mk
 
+SUBPROJECTS += Prefs
+include $(THEOS)/makefiles/aggregate.mk
+
 # Relaxin = RootHide 架构，编译用 roothide 版 Theos：
 #   make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide

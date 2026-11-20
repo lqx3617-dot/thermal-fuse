@@ -4,13 +4,19 @@
 <dict>
 	<key>CFBundleIdentifier</key>
 	<string>com.lqx3617.thermalfuse.prefs</string>
+	<key>CFBundleExecutable</key>
+	<string>ThermalFusePrefs</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleName</key>
 	<string>ThermalFusePrefs</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.2.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.2.0</string>
 	<key>NSPrincipalClass</key>
-	<string>PSListController</string>
+	<string>TFPrefsRootListController</string>
+	<key>MinimumOSVersion</key>
+	<string>15.0</string>
 </dict>
 </plist>
