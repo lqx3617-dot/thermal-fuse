@@ -52,6 +52,30 @@
 
 跨进程只走文件 + darwin 通知（`com.lqx3617.thermalfuse/reload`），不开 XPC。
 
+
+## 设置面板
+
+面板是自绘的 `UIViewController`（`Prefs/TFPrefsRootListController.m`），不是纯 plist。
+原因：纯 plist 只能摆开关，摆不出「当前档位 + 实时自检结论」这种需要读状态的东西。
+
+结构按 HIG 的渐进披露来做：
+
+| 分区 | 内容 | 依据 |
+|---|---|---|
+| 状态卡 | 档位大字、强度条、自检结论 | 一眼看到当前状态 |
+| 档位 | 三段控件 + 低功耗比例 | `segmented-controls.md`：iPhone 上不超过 5 段、等宽 |
+| 场景 | 游戏前缀、定时表 | 编辑走 `UIAlertController` |
+| 自检 | 立即自检 + 自动自检开关 | `settings.md`：只放不常改的项 |
+| 高级设置 | 6 个开关 + 功率上限 | 独立页，主界面不塞 |
+
+视觉全走系统语义色与动态字体：`systemGroupedBackgroundColor` / `labelColor` /
+`secondaryLabelColor`，`preferredFontForTextStyle:` 跟着无障碍字号缩放，
+深色模式不需要单独写一套。开关全部保留在列表行内（`toggles.md`：移动端 switch
+只用在 list row），档位色（蓝/绿/橙）只做强调，不承担唯一的信息通道。
+
+自检结果存在 `com.lqx3617.thermalfuse.live.plist`，面板读的是真实路径那份，
+所以 tweak 侧把文件双写（jbroot + 真实路径），不然沙盒里的设置读不到。
+
 ## 开关一览
 
 | 键 | 默认 | 作用 |
