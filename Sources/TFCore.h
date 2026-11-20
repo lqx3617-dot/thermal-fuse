@@ -18,7 +18,12 @@ typedef NS_ENUM(NSInteger, TFLevel) {
     TFLevelMax  = 2,
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern BOOL gVerbose;
+
 
 #define TFLog(fmt, ...) \
     do { if (gVerbose) NSLog(@"[ThermalFuse] " fmt, ##__VA_ARGS__); } while (0)
@@ -37,3 +42,7 @@ BOOL TFIsThermalmonitord(void);
 
 TFLevel TFLevelFromString(NSString *s);
 NSString *TFLevelName(TFLevel l);
+
+#ifdef __cplusplus
+}
+#endif
