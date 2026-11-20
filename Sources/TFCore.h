@@ -1,5 +1,6 @@
 // ThermalFuse 共享层：偏好、路径、档位、跨进程状态
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import "TFPrivate.h"
 
 #define TF_DOMAIN   "com.lqx3617.thermalfuse"
