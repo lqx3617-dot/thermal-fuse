@@ -389,7 +389,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
         UIListContentConfiguration *cfg = [UIListContentConfiguration cellConfiguration];
         cfg.text = row[@"title"];
         cfg.textProperties.color = UIColor.linkColor;
-        cfg.textProperties.alignment = NSTextAlignmentCenter;
+        cfg.textProperties.alignment = UIListContentTextAlignmentCenter;
         cell.contentConfiguration = cfg;
         return cell;
     }
