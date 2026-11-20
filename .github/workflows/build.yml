@@ -6,6 +6,9 @@ on:
     tags: [ 'v*' ]
   workflow_dispatch:
 
+permissions:
+  contents: write    # Release 需要写权限，默认是只读
+
 jobs:
   roothide:
     # macOS runner 在这个账号上分配不到（job 秒 cancelled），
