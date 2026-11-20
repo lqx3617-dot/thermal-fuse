@@ -1,113 +1,124 @@
-# ThermalFuse · 温控解除
+# ThermalFuse · 温控解除 + 智能档位
 
-注入 `thermalmonitord`，把热压力判定链掐掉，解掉过热降频。
-纯 Objective-C + Logos，不依赖 Orion / Swift runtime，CI 一次编好。
+注入 `thermalmonitord`（温控守护进程）和 `SpringBoard`（前台 App 感知），
+把热压力判定链掐掉，并按档位接管 CPU/GPU 功率上限。
+纯 Objective-C + Logos，不依赖 Orion / Swift runtime。
 
-目标环境：iOS 16.6.1 + Relaxin（RootHide 架构），roothide scheme 打包。
+目标环境：iOS 16.6.1 + Relaxin（RootHide），roothide scheme 打包。
 
-## 它改了什么
+## 当前版本 1.1.0 做了什么
 
-`thermalmonitord` 是系统的热管理守护进程，判定顺序大致是：
-传感器上报 → `CommonProduct` 算热压力 → `MitigationController` 压 CPU/GPU 功率上限 →
-必要时 `setThermalState:` 往内核写热状态，App 收到 `NSProcessInfo.thermalState` 变热，
-系统同时降亮度、限频。
+**解除温控（v1.0 已有）**
 
-ThermalFuse 在四个位置动手：
+| 位置 | 动作 |
+|---|---|
+| `CommonProduct -initProduct:` | 建实例立刻 `putDeviceInThermalSimulationMode:"nominal"` |
+| `tryTakeAction` / `simulateLightThermalPressure` / `updatePowerzoneTelemetry` / `handleMCSThermalPressure` | 留空，降频动作不落地 |
+| `-thermalPressureLevel` / `-setThermalState:` | 固定 0 |
+| `HidSensors -handleTemperatureEvent:service:` | 留空，传感器数据进不来 |
+| `NSDictionary +dictionaryWithContentsOfFile:` | 改写 `/System/Library/ThermalMonitor/*.plist` 的背光功率曲线 |
 
-| 位置 | 动作 | 效果 |
-|---|---|---|
-| `CommonProduct -initProduct:` | 建实例后立刻 `putDeviceInThermalSimulationMode:"nominal"` | 让它一直按「温度正常」算 |
-| `tryTakeAction` / `simulateLightThermalPressure` / `updatePowerzoneTelemetry` / `handleMCSThermalPressure` | 留空 | 降频动作算完不落地 |
-| `-thermalPressureLevel` / `-setThermalState:` | 固定 0 | 上报给系统的压力等级恒为最小 |
-| `HidSensors -handleTemperatureEvent:service:` | 留空 | 温度传感器的新数据进不来 |
+**档位引擎（v1.1 新增）**
 
-另外改写 `/System/Library/ThermalMonitor/*.plist`：把 `backlightComponentControl` 里
-`BacklightBrightness` / `BacklightPower` 的整条曲线拉平到第一档，`expectsCPMSSupport` 置 0，
-可选把 `maxThermalPower` / `minThermalPower` 钉成你填的值。系统以为背光本来就省电，
-少了降频的理由。
+接管 `MitigationController` 的 `setCPUPowerCeiling:fromDecisionSource:`、
+`setGPUPowerCeiling:…`、`setPackagePowerCeiling:…`、`setMaxPackagePower:`，
+按当前档位放大或压缩系统给的上限。
 
-## 和 be-huge/insulation 的关系
+不复用硬编码功率值，用「运行期间见过的最大的 ceiling」当基准（`gMaxSeen`），
+所以换机型不用重新填参数。三档：
 
-思路参考了 [insulation](https://github.com/be-huge/insulation)（那是 Swift + Orion 写的，
-同一个 hook 面）。这边重写成纯 Objective-C：
+- `auto` 不干预
+- `low` 压到 `gMaxSeen × lowRatio`（默认 40%）
+- `max` 顶到 `gMaxSeen`
 
-- 不用 Orion，不用 Swift 交叉模块，CI 少一层依赖
-- 全部开关走偏好文件，能单独关，方便定位是哪个 hook 起作用
-- 偏好面板是纯 plist bundle，不需要编译 PrefLoader 代码
-- 类方法 hook 走 `MSHookMessageEx`，不赌 Logos 的类方法支持
+**游戏识别**：SpringBoard 侧监听前台 App 通知，把 bundle id 写进
+`thermalfuse.fg.plist`；thermalmonitord 每 20 秒读一次，命中 `games`
+里的前缀就切 `max`，退出回落。
 
-## 装
+**定时切档**：`schedule` 里写 `08:00-22:00=max;23:00-07:00=low`，
+优先级高于游戏识别。
 
-```sh
-sileo   # 或 dpkg -i
-dpkg -i ThermalFuse_1.0.0_iphoneos-arm64.deb
-killall -9 thermalmonitord     # 或重启用户空间
-```
+**自检**：启动后 6 秒开始，2 秒采一次共 15 次（30 秒），统计 CPU / 包功率 /
+电池温度的平均与峰值，给出「系统在压功率 / 已接近上限」的判定，结果写
+`thermalfuse.live.plist` 的 `reportText` 并打一行 syslog。
 
-Sileo 里直接点 deb 也行。装完「设置」里会多一项「温控解除」。
+## 三个共享文件
 
-## 开关（`/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.plist`）
+| 文件 | 作用 |
+|---|---|
+| `com.lqx3617.thermalfuse.plist` | 偏好，设置面板写的 |
+| `com.lqx3617.thermalfuse.live.plist` | 自检报告（`reportText` / `maxSeen` / `level`） |
+| `com.lqx3617.thermalfuse.fg.plist` | 前台 bundle id + 时间戳（45 秒过期） |
+
+跨进程只走文件 + darwin 通知（`com.lqx3617.thermalfuse/reload`），不开 XPC。
+
+## 开关一览
 
 | 键 | 默认 | 作用 |
 |---|---|---|
-| `enabled` | true | 总开关，false 时什么都不 hook |
+| `enabled` | true | 总开关 |
 | `forceNominal` | true | 强制 nominal 模拟模式 |
 | `blockSensorEvents` | true | 屏蔽传感器上报 |
 | `patchThermalPlist` | true | 改写 ThermalMonitor 配置 |
-| `blockMitigation` | false | 连 `MitigationController` 的 CPMS 缓解一起关，更激进 |
-| `cpuMaxPower` | 空 | 背光功率上限，0 或空 = 不改写 |
-| `verbose` | false | 往 syslog 打每一步 |
+| `blockMitigation` | false | 连 CPMS 缓解一起关 |
+| `level` | auto | 常驻档位 auto/low/max |
+| `lowRatio` | 40 | 低功耗档百分比 |
+| `games` | 常见游戏前缀 | 逗号分隔的 bundle id 前缀 |
+| `schedule` | 空 | 定时表 |
+| `cpuMaxPower` | 空 | 背光功率上限，0 = 不改 |
+| `selfTestOnStart` | true | 启动后自动自检 |
+| `verbose` | false | syslog 详细日志 |
 
-命令行改完发一条通知即可重载：
+## 装
+
+Sileo 里点 deb 装最稳（RootHide 的 dpkg 在 jbroot 里）：
 
 ```sh
-killall -9 thermalmonitord
+/var/jb/usr/bin/dpkg -i /var/mobile/Downloads/ThermalFuse-1.1.0.deb
+killall -9 thermalmonitord; killall -9 SpringBoard
 ```
 
-## 验证有没有生效
+## 验证
 
 ```sh
-# 1. 确认注入成功（verbose 打开后）
+# 注入是否成功
 idevicesyslog | grep ThermalFuse
 
-# 2. 看进程还在、插件已加载
-ps aux | grep thermalmonitord
+# 该看到：
+# [ThermalFuse] 1.1.0 loaded in thermalmonitord
+# [ThermalFuse] SpringBoard 侧加载
+# [ThermalFuse] 自检完成：样本 15 条｜CPU 平均 …｜包 平均 …｜…
 
-# 3. 跑分前看频率
-#    TrollStore 里装 Filza → /var/jb/usr/bin/... 或直接看 CPU 频率监测 App
+# 前台识别是否工作（verbose 打开后）
+idevicesyslog | grep "前台:"
+
+# 自检报告原文
+cat /var/mobile/Library/Preferences/com.lqx3617.thermalfuse.live.plist
 ```
 
-## 排查
+手动再跑一次自检（终端里）：
 
-| 现象 | 可能原因 |
-|---|---|
-| 设置里没有「温控解除」 | 没装 PreferenceLoader；或 bundle 路径不在 jbroot 里 |
-| syslog 完全没有 ThermalFuse | dylib 没注入：Check Filter 的 Executables、RootHide 的注入开关 |
-| 有日志但照样降频 | 系统还有别的路径（如 `powermanagementd`），看 verbose 日志确认哪个 hook 触发 |
-| 装了直接重启 | 方法签名和 iOS 16.6.1 不符，看崩溃日志里 Last Exception Backtrace |
+```sh
+launchctl post-notification com.lqx3617.thermalfuse/selftest
+# 或者用 trollstore 里的快捷指令 / 任意发 darwin 通知的工具
+```
+
+## 注意
+
+- SpringBoard 侧只注册了三个 NSNotification，不 hook 任何私有方法 —— 崩不了。
+- `MitigationController` 的方法签名取自 iOS 16 的类结构，换大版本要重新对。
+- `gMaxSeen` 是运行时学习的，刚装完的第一次自检 `maxSeen` 可能是 0，
+  跑一会儿再看才有意义。
 
 ## 构建
-
-本机（Ubuntu / macOS 都行）：
 
 ```sh
 export THEOS=~/theos          # roothide/theos fork
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
 ```
 
-产物：`packages/com.lqx3617.thermalfuse_<版本>_iphoneos-arm64e.deb`。
+产物 `packages/com.lqx3617.thermalfuse_<版本>_iphoneos-arm64e.deb`。
+Architecture 必须是 `iphoneos-arm64e`、包内路径不能写 `/var/jb` 前缀 ——
+这是 roothide 的约定，RootHide 的 dpkg 靠它做 jbroot 重映射。
 
-注意两个 roothide 特有的点：
-
-1. Architecture 是 `iphoneos-arm64e`，不是 `iphoneos-arm64`。这是 roothide 的约定
-   （`vendor/mod/roothide/package/deb.mk` 里写死的），RootHide 的 dpkg 靠这个字段
-   认出「这是 jbroot 的包」再做路径重映射，改成 arm64 反而装不上。
-2. 包内路径写成 `Library/MobileSubstrate/...`，没有 `/var/jb` 前缀。同样是故意的，
-   前缀由 RootHide 安装时补，写死前缀会让重映射错位。
-
-## CI
-
-GitHub Actions 用 `ubuntu-22.04` + theos 官方 Linux 工具链编（macOS runner 在这个
-账号上分配不到，job 会秒 cancelled）。流程：apt 依赖 → roothide/theos →
-`iOSToolchain-x86_64` → sparse checkout 只取 iPhoneOS16.5.sdk → make package。
-打了 `v*` tag 会自动发 Release。
+CI 用 `ubuntu-22.04` + theos 官方 Linux 工具链（macOS runner 在这个账号上分配不到）。
