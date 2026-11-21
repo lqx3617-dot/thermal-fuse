@@ -6,6 +6,11 @@
 #import <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/sysctl.h>
+#include <spawn.h>
 #import "TFPrefsRootListController.h"
 
 #pragma mark - 偏好读写
@@ -71,6 +76,48 @@ static CGFloat TFLevelRatio(NSString *raw) {
         return MAX(0.05, MIN(1.0, r / 100.0));
     }
     return 0.6;
+}
+
+#pragma mark - 重启用户空间
+
+static pid_t TFSpringBoardPID(void) {
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+    size_t size = 0;
+    if (sysctl(mib, 4, NULL, &size, NULL, 0) != 0 || size == 0) return -1;
+
+    struct kinfo_proc *procs = malloc(size);
+    if (!procs) return -1;
+    if (sysctl(mib, 4, procs, &size, NULL, 0) != 0) {
+        free(procs);
+        return -1;
+    }
+
+    pid_t found = -1;
+    int count = (int)(size / sizeof(struct kinfo_proc));
+    for (int i = 0; i < count; i++) {
+        if (strcmp(procs[i].kp_proc.p_comm, "SpringBoard") == 0) {
+            found = procs[i].kp_proc.p_pid;
+            break;
+        }
+    }
+    free(procs);
+    return found;
+}
+
+static BOOL TFDoRespring(void) {
+    // 先试系统的 killall
+    pid_t pid = 0;
+    char *argv[] = {"killall", "-9", "SpringBoard", NULL};
+    if (posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, argv, NULL) == 0) {
+        return YES;
+    }
+
+    // 退路：自己找 SpringBoard 的 pid 直接发信号
+    pid_t sb = TFSpringBoardPID();
+    if (sb > 0) {
+        return kill(sb, SIGKILL) == 0;
+    }
+    return NO;
 }
 
 @interface TFDiagController : UIViewController
@@ -296,6 +343,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
               @{@"type": @"nav", @"title": @"运行日志", @"action": @"log"},
               @{@"type": @"nav", @"title": @"诊断信息", @"action": @"diag"},
               @{@"type": @"nav", @"title": @"高级设置", @"action": @"advanced"},
+              @{@"type": @"button", @"title": @"重启用户空间", @"action": @"respring"},
           ]},
     ];
 }
@@ -388,7 +436,8 @@ static CGFloat TFLevelRatio(NSString *raw) {
 
         UIListContentConfiguration *cfg = [UIListContentConfiguration cellConfiguration];
         cfg.text = row[@"title"];
-        cfg.textProperties.color = UIColor.linkColor;
+        BOOL destructive = [row[@"action"] isEqualToString:@"respring"];
+        cfg.textProperties.color = destructive ? UIColor.systemRedColor : UIColor.linkColor;
         cfg.textProperties.alignment = UIListContentTextAlignmentCenter;
         cell.contentConfiguration = cfg;
         return cell;
@@ -430,6 +479,11 @@ static CGFloat TFLevelRatio(NSString *raw) {
 
     if ([type isEqualToString:@"button"] && [action isEqualToString:@"selftest"]) {
         [self runSelfTest];
+        return;
+    }
+
+    if ([type isEqualToString:@"button"] && [action isEqualToString:@"respring"]) {
+        [self askRespring];
         return;
     }
 
@@ -477,6 +531,19 @@ static CGFloat TFLevelRatio(NSString *raw) {
         [weakSelf.table reloadData];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)askRespring {
+    UIAlertController *a = [UIAlertController
+        alertControllerWithTitle:@"重启用户空间"
+                         message:@"屏幕会黑一下，SpringBoard 重启后新装的 tweak 才会加载。"
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"重启" style:UIAlertActionStyleDestructive
+                                       handler:^(UIAlertAction *x) {
+        TFDoRespring();
+    }]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)runSelfTest {
