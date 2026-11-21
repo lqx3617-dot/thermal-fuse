@@ -128,8 +128,10 @@ static BOOL TFRespringViaFrontBoard(void) {
         NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
         [inv setTarget:(id)actionCls];
         [inv setSelector:actionSel];
-        NSString *reason = @"respring";
-        unsigned long long options = 0;
+        // 参考 coolstar/uikittools-ng 与 qtlunya/fakepass 的写法：
+        // reason 用 RestartRenderServer，options 必须带 FadeToBlackTransition(1<<2)
+        NSString *reason = @"RestartRenderServer";
+        unsigned long long options = (1 << 2);
         id targetURL = nil;
         [inv setArgument:&reason atIndex:2];
         [inv setArgument:&options atIndex:3];
@@ -149,7 +151,8 @@ static BOOL TFRespringViaFrontBoard(void) {
     if (![service respondsToSelector:sendSel]) return NO;
 
     @try {
-        NSArray *actions = @[action];
+        // sendActions: 收的是 NSSet，不是 NSArray —— 传错这一处就会静默失败
+        NSSet *actions = [NSSet setWithObject:action];
         NSMethodSignature *sig = [service methodSignatureForSelector:sendSel];
         NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
         [inv setTarget:service];
