@@ -227,21 +227,6 @@ static CGFloat TFLevelRatio(NSString *raw) {
 
 @end
 
-@class TFPrefsRootListController;
-
-#pragma mark - 高级设置页
-
-@interface TFAdvancedController : UIViewController <UITableViewDataSource, UITableViewDelegate>
-- (UITableView *)table;
-@end
-
-#pragma mark - 主设置页
-
-@interface TFPrefsRootListController : UIViewController <UITableViewDataSource, UITableViewDelegate>
-@property (nonatomic, strong) UITableView *table;
-@property (nonatomic, strong) NSArray *sections;
-@end
-
 @implementation TFPrefsRootListController
 
 - (void)viewDidLoad {
