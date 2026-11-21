@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/sysctl.h>
 #include <spawn.h>
+#include <dlfcn.h>
 #import "TFPrefsRootListController.h"
 
 #pragma mark - 偏好读写
@@ -104,29 +105,77 @@ static pid_t TFSpringBoardPID(void) {
     return found;
 }
 
-static BOOL TFDoRespring(void) {
-    // 先试系统的 killall
-    pid_t pid = 0;
-    char *argv[] = {"killall", "-9", "SpringBoard", NULL};
-    if (posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, argv, NULL) == 0) {
-        return YES;
+// 沙盒里 kill() 别的进程会被拒，posix_spawn 也一样。
+// 走 FrontBoardServices 的 XPC 请系统自己重启 SpringBoard，这是越狱 App 的标准做法。
+static BOOL TFRespringViaFrontBoard(void) {
+    if (!dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_LAZY)) {
+        return NO;
+    }
+    if (!dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY)) {
+        return NO;
     }
 
-    // 退路：自己找 SpringBoard 的 pid 直接发信号
-    pid_t sb = TFSpringBoardPID();
-    if (sb > 0) {
-        return kill(sb, SIGKILL) == 0;
+    Class actionCls = NSClassFromString(@"SBSRelaunchAction");
+    Class serviceCls = NSClassFromString(@"FBSSystemService");
+    if (!actionCls || !serviceCls) return NO;
+
+    SEL actionSel = NSSelectorFromString(@"actionWithReason:options:targetURL:");
+    if (![actionCls respondsToSelector:actionSel]) return NO;
+
+    id action = nil;
+    @try {
+        NSMethodSignature *sig = [actionCls methodSignatureForSelector:actionSel];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:(id)actionCls];
+        [inv setSelector:actionSel];
+        NSString *reason = @"respring";
+        unsigned long long options = 0;
+        id targetURL = nil;
+        [inv setArgument:&reason atIndex:2];
+        [inv setArgument:&options atIndex:3];
+        [inv setArgument:&targetURL atIndex:4];
+        [inv invoke];
+        [inv getReturnValue:&action];
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] 构造 relaunch action 失败: %@", e);
+        return NO;
     }
-    return NO;
+    if (!action) return NO;
+
+    id service = [serviceCls performSelector:NSSelectorFromString(@"sharedService")];
+    if (!service) return NO;
+
+    SEL sendSel = NSSelectorFromString(@"sendActions:withResult:");
+    if (![service respondsToSelector:sendSel]) return NO;
+
+    @try {
+        NSArray *actions = @[action];
+        NSMethodSignature *sig = [service methodSignatureForSelector:sendSel];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:service];
+        [inv setSelector:sendSel];
+        [inv setArgument:&actions atIndex:2];
+        id result = nil;
+        [inv setArgument:&result atIndex:3];
+        [inv invoke];
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] 发送 relaunch 失败: %@", e);
+        return NO;
+    }
+    return YES;
 }
 
-@interface TFDiagController : UIViewController
-@property (nonatomic, strong) UITextView *textView;
-@end
+static BOOL TFDoRespring(void) {
+    if (TFRespringViaFrontBoard()) return YES;
 
-@interface TFLogController : UIViewController
-@property (nonatomic, strong) UITextView *textView;
-@end
+    pid_t pid = 0;
+    char *argv[] = {"killall", "-9", "SpringBoard", NULL};
+    if (posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, argv, NULL) == 0) return YES;
+
+    pid_t sb = TFSpringBoardPID();
+    if (sb > 0) return kill(sb, SIGKILL) == 0;
+    return NO;
+}
 
 #pragma mark - 状态卡片
 
@@ -541,7 +590,14 @@ static BOOL TFDoRespring(void) {
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"重启" style:UIAlertActionStyleDestructive
                                        handler:^(UIAlertAction *x) {
-        TFDoRespring();
+        if (!TFDoRespring()) {
+            UIAlertController *f = [UIAlertController
+                alertControllerWithTitle:@"重启失败"
+                                 message:@"沙盒挡住了。在 iDownload 的 Shell 里执行 killall -9 SpringBoard 即可。"
+                          preferredStyle:UIAlertControllerStyleAlert];
+            [f addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:f animated:YES completion:nil];
+        }
     }]];
     [self presentViewController:a animated:YES completion:nil];
 }
