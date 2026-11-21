@@ -525,6 +525,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
         @{@"type": @"switch", @"title": @"屏蔽温度传感器上报", @"key": @"blockSensorEvents", @"def": @YES},
         @{@"type": @"switch", @"title": @"改写 ThermalMonitor 配置", @"key": @"patchThermalPlist", @"def": @YES},
         @{@"type": @"switch", @"title": @"关闭 CPMS 缓解（激进）", @"key": @"blockMitigation", @"def": @NO},
+        @{@"type": @"switch", @"title": @"档位引擎（实验）", @"key": @"engineEnabled", @"def": @NO},
         @{@"type": @"switch", @"title": @"SpringBoard 侧（游戏识别）", @"key": @"sbEnabled", @"def": @YES},
         @{@"type": @"switch", @"title": @"输出日志", @"key": @"verbose", @"def": @NO},
         @{@"type": @"value", @"title": @"背光功率上限", @"key": @"cpuMaxPower", @"numeric": @YES},
@@ -540,7 +541,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return @"前四项是温控解除的核心，全关就等于装了个空壳。改完立刻生效，不用重启。";
+    return @"前四项是温控解除的核心，全关就等于装了个空壳。档位引擎要动 MitigationController 的功率 setter，默认关着；确认温控解除稳定后再开。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {

@@ -259,6 +259,7 @@ static id TFPatchedPlist(NSDictionary *src) {
 static id (*tf_origDictWithContents)(id, SEL, NSString *);
 
 static id tf_dictWithContents(id self, SEL _cmd, NSString *path) {
+    if (!tf_origDictWithContents) return nil;
     id result = tf_origDictWithContents(self, _cmd, path);
     if ([path isKindOfClass:[NSString class]] &&
         [path rangeOfString:@"/System/Library/ThermalMonitor/"].location != NSNotFound &&
@@ -270,12 +271,20 @@ static id tf_dictWithContents(id self, SEL _cmd, NSString *path) {
 }
 
 static void TFInstallDictHook(void) {
-    Class meta = object_getClass((id)objc_getClass("NSDictionary"));
-    if (!meta) return;
-    MSHookMessageEx(meta, @selector(dictionaryWithContentsOfFile:),
-                    (IMP)tf_dictWithContents,
-                    (IMP *)&tf_origDictWithContents);
-    TFLog(@"NSDictionary 类方法 hook 已装");
+    Class cls = objc_getClass("NSDictionary");
+    if (!cls) return;
+    Class meta = object_getClass((id)cls);
+    SEL s = sel_registerName("dictionaryWithContentsOfFile:");
+    if (!meta || !class_getClassMethod(cls, s)) {
+        NSLog(@"[ThermalFuse] 类方法 dictionaryWithContentsOfFile: 找不到，跳过");
+        return;
+    }
+    MSHookMessageEx(meta, s, (IMP)tf_dictWithContents, (IMP *)&tf_origDictWithContents);
+    if (!tf_origDictWithContents) {
+        NSLog(@"[ThermalFuse] 类方法 hook 失败，orig 为空，后续调用会崩，立刻撤退");
+        return;
+    }
+    NSLog(@"[ThermalFuse] hooked NSDictionary.dictionaryWithContentsOfFile:");
 }
 
 #pragma mark - 温控解除
@@ -283,6 +292,10 @@ static void TFInstallDictHook(void) {
 
 #pragma mark - 手动 hook：拿得到 orig 指针，能判空，缺方法就跳过
 
+typedef void (*TFVoidFn)(id, SEL);
+typedef void (*TFVoidIntFn)(id, SEL, int);
+typedef void (*TFVoidIntIdFn)(id, SEL, int, id);
+typedef int64_t (*TFInt64Fn)(id, SEL);
 typedef id (*TFInitProductFn)(id, SEL, id);
 typedef void (*TFSetIntIntFn)(id, SEL, int, int);
 typedef void (*TFSetIntFn)(id, SEL, int);
@@ -397,59 +410,104 @@ static void TFInstallManualHooks(void) {
     }
 }
 
-%group Core
-%hook CommonProduct
+#pragma mark - 温控解除 hook（手动安装，类或方法缺失就跳过，绝不 MSHookMessageEx(NULL)）
 
-- (void)tryTakeAction {
+static TFVoidFn tfOrigTryAction = NULL;
+static TFVoidFn tfOrigSimLight = NULL;
+static TFVoidFn tfOrigUpdatePZ = NULL;
+static TFVoidFn tfOrigHandleMCS = NULL;
+static TFInt64Fn tfOrigPressure = NULL;
+static TFVoidIntFn tfOrigSetState = NULL;
+static TFVoidIntIdFn tfOrigHandleTemp = NULL;
+
+static void tf_tryTakeAction(id self, SEL _cmd) {
     TFLog(@"tryTakeAction 拦下");
 }
 
-- (void)simulateLightThermalPressure {
+static void tf_simLight(id self, SEL _cmd) {
     TFLog(@"simulateLightThermalPressure 拦下");
 }
 
-- (void)updatePowerzoneTelemetry {
+static void tf_updatePZ(id self, SEL _cmd) {
 }
 
-- (void)handleMCSThermalPressure {
+static void tf_handleMCS(id self, SEL _cmd) {
 }
 
-- (int64_t)thermalPressureLevel {
+static int64_t tf_pressure(id self, SEL _cmd) {
     return 0;
 }
 
-- (void)setThermalState:(int)a3 {
-    // 不调原实现：原方法往内核写热状态，不调用就等于不写。
-    // 之前这里用 %orig(0)，一旦方法不存在或签名不符就是 SIGBUS。
+static void tf_setState(id self, SEL _cmd, int st) {
+    // 故意不调原实现：原方法往内核写热状态
+    (void)st;
 }
 
-%end
-%end
-
-%group Sensors
-%hook HidSensors
-
-- (void)handleTemperatureEvent:(int)a3 service:(id)a4 {
-    TFLog(@"传感器事件 type=%d 已吞", a3);
+static void tf_handleTemp(id self, SEL _cmd, int type, id svc) {
+    (void)type;
+    (void)svc;
+    TFLog(@"温度事件已吞");
 }
 
-%end
-%end
+// 类存在才动，方法存在就 hook，不存在就补一个空实现
+static void TFHookOrAdd(Class c, const char *selName, IMP imp, const char *types, IMP *origOut) {
+    if (!c) return;
+    SEL s = sel_registerName(selName);
+    if (class_getInstanceMethod(c, s)) {
+        IMP dummy = NULL;
+        MSHookMessageEx(c, s, imp, origOut ? origOut : &dummy);
+        NSLog(@"[ThermalFuse] hooked %s", selName);
+    } else if (types) {
+        class_addMethod(c, s, imp, types);
+        NSLog(@"[ThermalFuse] 补方法 %s", selName);
+    } else {
+        NSLog(@"[ThermalFuse] 缺 %s，跳过", selName);
+    }
+}
+
+static void TFInstallClassHooks(void) {
+    Class prod = objc_getClass("CommonProduct");
+    if (!prod) {
+        NSLog(@"[ThermalFuse] 没有 CommonProduct，温控解除不生效");
+    } else {
+        SEL initSel = sel_registerName("initProduct:");
+        if (class_getInstanceMethod(prod, initSel)) {
+            MSHookMessageEx(prod, initSel, (IMP)tf_initProduct, (IMP *)&tfOrigInitProduct);
+            NSLog(@"[ThermalFuse] hooked CommonProduct.initProduct:");
+        } else {
+            NSLog(@"[ThermalFuse] 缺 initProduct:，跳过");
+        }
+
+        TFHookOrAdd(prod, "tryTakeAction", (IMP)tf_tryTakeAction, "v@:", (IMP *)&tfOrigTryAction);
+        TFHookOrAdd(prod, "simulateLightThermalPressure", (IMP)tf_simLight, "v@:", (IMP *)&tfOrigSimLight);
+        TFHookOrAdd(prod, "updatePowerzoneTelemetry", (IMP)tf_updatePZ, "v@:", (IMP *)&tfOrigUpdatePZ);
+        TFHookOrAdd(prod, "handleMCSThermalPressure", (IMP)tf_handleMCS, "v@:", (IMP *)&tfOrigHandleMCS);
+        TFHookOrAdd(prod, "thermalPressureLevel", (IMP)tf_pressure, "q@:", (IMP *)&tfOrigPressure);
+        TFHookOrAdd(prod, "setThermalState:", (IMP)tf_setState, "v@:i", (IMP *)&tfOrigSetState);
+    }
+
+    Class hid = objc_getClass("HidSensors");
+    if (!hid) {
+        NSLog(@"[ThermalFuse] 没有 HidSensors，传感器屏蔽不生效");
+    } else {
+        TFHookOrAdd(hid, "handleTemperatureEvent:service:", (IMP)tf_handleTemp, "v@:i@", (IMP *)&tfOrigHandleTemp);
+    }
+}
 
 %ctor {
     TFReloadPrefs();
-    NSLog(@"[ThermalFuse] 1.3.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
+    NSLog(@"[ThermalFuse] 1.4.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;
 
-    %init(Core);
+    TFInstallClassHooks();
 
-    if (TFBool(@"blockSensorEvents", YES)) {
-        %init(Sensors);
+    if (TFBool(@"engineEnabled", NO)) {
+        TFInstallManualHooks();
+    } else {
+        NSLog(@"[ThermalFuse] 档位引擎未开启（高级设置里可以开）");
     }
-
-    TFInstallManualHooks();
 
     if (TFBool(@"patchThermalPlist", YES)) {
         TFInstallDictHook();
