@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
+#import "TFPrefsRootListController.h"
 
 #pragma mark - 偏好读写
 
