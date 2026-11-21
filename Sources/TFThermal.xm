@@ -7,6 +7,7 @@ static CommonProduct *gProduct = nil;
 static MitigationController *gMitigation = nil;
 static TFLevel gLevel = TFLevelAuto;
 static int gMaxSeen = 0;
+static int gSwitchCount = 0;
 static dispatch_source_t gTickTimer = nil;
 static dispatch_source_t gTestTimer = nil;
 static NSMutableArray *gSamples = nil;
@@ -103,40 +104,23 @@ static void TFResolveAndApply(void) {
 
     gLevel = lv;
     if (old != lv) {
+        // 不主动调 updateCPU/updateGPU：那些方法有线程约束，跨线程调用会 SIGBUS。
+        // 档位会在系统下一次设置 ceiling 时自然生效。
         TFLog(@"档位切换 %@ -> %@", TFLevelName(old), TFLevelName(lv));
-        @try {
-            if ([gMitigation respondsToSelector:@selector(updateCPU)]) [gMitigation updateCPU];
-            if ([gMitigation respondsToSelector:@selector(updateGPU)]) [gMitigation updateGPU];
-            if ([gMitigation respondsToSelector:@selector(updatePackage)]) [gMitigation updatePackage];
-        } @catch (NSException *e) {
-            TFLog(@"触发重算异常: %@", e);
-        }
     }
 }
 
 #pragma mark - 自检
 
+// 只用本进程自己记下来的状态，不主动调任何私有 getter：
+// 那些方法在守护进程里的线程约束不明，跨线程调用是 SIGBUS 的常见来源。
 static void TFSampleOnce(void) {
-    if (!gMitigation) return;
     NSMutableDictionary *s = [NSMutableDictionary dictionary];
-    @try {
-        if ([gMitigation respondsToSelector:@selector(getCurrentCPUPower)])
-            s[@"cpu"] = @([gMitigation getCurrentCPUPower]);
-        if ([gMitigation respondsToSelector:@selector(getCurrentGPUPower)])
-            s[@"gpu"] = @([gMitigation getCurrentGPUPower]);
-        if ([gMitigation respondsToSelector:@selector(getCurrentPackagePower)])
-            s[@"pkg"] = @([gMitigation getCurrentPackagePower]);
-    } @catch (NSException *e) {}
-    @try {
-        if ([gProduct respondsToSelector:@selector(gasGaugeBatteryTemperature)])
-            s[@"batT"] = @([gProduct gasGaugeBatteryTemperature]);
-        if ([gProduct respondsToSelector:@selector(arcVirtualTemperature)])
-            s[@"socT"] = @([gProduct arcVirtualTemperature]);
-    } @catch (NSException *e) {}
-
+    s[@"ceiling"] = @(gMaxSeen);
     s[@"level"] = TFLevelName(gLevel);
+    s[@"switches"] = @(gSwitchCount);
+    s[@"pid"] = @(getpid());
     s[@"t"] = @([[NSDate date] timeIntervalSince1970]);
-
     if (!gSamples) gSamples = [NSMutableArray array];
     [gSamples addObject:s];
 }
@@ -158,27 +142,19 @@ static NSDictionary *TFStats(NSArray *samples, NSString *key) {
 
 static void TFFinishSelfTest(void) {
     NSArray *arr = [gSamples copy] ?: @[];
-    NSDictionary *cpu = TFStats(arr, @"cpu");
-    NSDictionary *pkg = TFStats(arr, @"pkg");
-    NSDictionary *bat = TFStats(arr, @"batT");
+    NSDictionary *ceil = TFStats(arr, @"ceiling");
 
-    NSString *verdict = @"数据不足";
-    if ([pkg[@"n"] intValue] > 3 && gMaxSeen > 0) {
-        double avg = [pkg[@"avg"] doubleValue];
-        if (avg < gMaxSeen * 0.5) {
-            verdict = @"系统在压功率，建议开满频档";
-        } else if (avg > gMaxSeen * 0.9) {
-            verdict = @"已接近功率上限，档位正常";
-        } else {
-            verdict = @"负载中等，功率未触顶";
-        }
+    NSString *verdict = @"系统还没给过功率上限，多用一会儿再自检";
+    if (gMaxSeen > 0) {
+        verdict = gSwitchCount > 0
+            ? [NSString stringWithFormat:@"已拦截 %d 次功率上限设置", gSwitchCount]
+            : @"hook 已挂上，但系统还没调整过功率";
     }
 
     NSString *text = [NSString stringWithFormat:
-        @"样本 %lu 条｜CPU 平均 %@ 峰值 %@｜包 平均 %@ 峰值 %@｜电池 %@｜档位 %@｜上限 %d｜%@",
-        (unsigned long)arr.count, cpu[@"avg"], cpu[@"peak"],
-        pkg[@"avg"], pkg[@"peak"], bat[@"avg"],
-        TFLevelName(gLevel), gMaxSeen, verdict];
+        @"样本 %lu 条｜档位 %@｜系统上限 %d（均值 %.0f）｜拦截 %d 次｜%@",
+        (unsigned long)arr.count, TFLevelName(gLevel), gMaxSeen,
+        [ceil[@"avg"] doubleValue], gSwitchCount, verdict];
 
     TFWriteLive(@{
         @"reportText": text,
@@ -186,6 +162,7 @@ static void TFFinishSelfTest(void) {
         @"samples": @(arr.count),
         @"level": TFLevelName(gLevel),
         @"maxSeen": @(gMaxSeen),
+        @"switchCount": @(gSwitchCount),
     });
 
     NSLog(@"[ThermalFuse] 自检完成：%@", text);
@@ -303,20 +280,125 @@ static void TFInstallDictHook(void) {
 
 #pragma mark - 温控解除
 
-%group Core
-%hook CommonProduct
 
-- (id)initProduct:(id)arg1 {
-    id r = %orig;
+#pragma mark - 手动 hook：拿得到 orig 指针，能判空，缺方法就跳过
+
+typedef id (*TFInitProductFn)(id, SEL, id);
+typedef void (*TFSetIntIntFn)(id, SEL, int, int);
+typedef void (*TFSetIntFn)(id, SEL, int);
+typedef void (*TFSetBoolFn)(id, SEL, BOOL);
+
+static TFInitProductFn tfOrigInitProduct = NULL;
+static TFSetIntIntFn tfOrigCPUCeil = NULL;
+static TFSetIntIntFn tfOrigGPUCeil = NULL;
+static TFSetIntIntFn tfOrigPkgCeil = NULL;
+static TFSetIntFn tfOrigMaxPkg = NULL;
+static TFSetBoolFn tfOrigCPMS = NULL;
+
+static id tf_initProduct(id self, SEL _cmd, id arg) {
+    if (!tfOrigInitProduct) return nil;
+    id r = tfOrigInitProduct(self, _cmd, arg);
     if (r) {
         gProduct = r;
         if (TFBool(@"forceNominal", YES)) {
-            [(CommonProduct *)r putDeviceInThermalSimulationMode:@"nominal"];
-            TFLog(@"initProduct 后强制 nominal 模拟模式");
+            @try {
+                [(CommonProduct *)r putDeviceInThermalSimulationMode:@"nominal"];
+                TFLog(@"initProduct 后强制 nominal 模拟模式");
+            } @catch (NSException *e) {
+                TFLog(@"nominal 设置异常: %@", e);
+            }
         }
     }
     return r;
 }
+
+static void tf_setCPUCeil(id self, SEL _cmd, int v, int src) {
+    gMitigation = self;
+    gSwitchCount++;
+    if (tfOrigCPUCeil) tfOrigCPUCeil(self, _cmd, TFApplyCeiling(v), src);
+}
+
+static void tf_setGPUCeil(id self, SEL _cmd, int v, int src) {
+    gMitigation = self;
+    gSwitchCount++;
+    if (tfOrigGPUCeil) tfOrigGPUCeil(self, _cmd, TFApplyCeiling(v), src);
+}
+
+static void tf_setPkgCeil(id self, SEL _cmd, int v, int src) {
+    gMitigation = self;
+    gSwitchCount++;
+    if (tfOrigPkgCeil) tfOrigPkgCeil(self, _cmd, TFApplyCeiling(v), src);
+}
+
+static void tf_setMaxPkg(id self, SEL _cmd, int v) {
+    gMitigation = self;
+    gSwitchCount++;
+    if (tfOrigMaxPkg) tfOrigMaxPkg(self, _cmd, TFApplyCeiling(v));
+}
+
+static void tf_setCPMS(id self, SEL _cmd, BOOL v) {
+    if (tfOrigCPMS) tfOrigCPMS(self, _cmd, TFBool(@"blockMitigation", NO) ? NO : v);
+}
+
+static void TFInstallManualHooks(void) {
+    Class prod = objc_getClass("CommonProduct");
+    SEL initSel = sel_registerName("initProduct:");
+    if (prod && class_getInstanceMethod(prod, initSel)) {
+        MSHookMessageEx(prod, initSel, (IMP)tf_initProduct, (IMP *)&tfOrigInitProduct);
+        NSLog(@"[ThermalFuse] hooked CommonProduct.initProduct:");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 CommonProduct.initProduct:，跳过");
+    }
+
+    Class c = objc_getClass("MitigationController");
+    if (!c) {
+        NSLog(@"[ThermalFuse] 没有 MitigationController，档位引擎不生效");
+        return;
+    }
+
+    SEL s1 = sel_registerName("setCPUPowerCeiling:fromDecisionSource:");
+    if (class_getInstanceMethod(c, s1)) {
+        MSHookMessageEx(c, s1, (IMP)tf_setCPUCeil, (IMP *)&tfOrigCPUCeil);
+        NSLog(@"[ThermalFuse] hooked setCPUPowerCeiling");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 setCPUPowerCeiling");
+    }
+
+    SEL s2 = sel_registerName("setGPUPowerCeiling:fromDecisionSource:");
+    if (class_getInstanceMethod(c, s2)) {
+        MSHookMessageEx(c, s2, (IMP)tf_setGPUCeil, (IMP *)&tfOrigGPUCeil);
+        NSLog(@"[ThermalFuse] hooked setGPUPowerCeiling");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 setGPUPowerCeiling");
+    }
+
+    SEL s3 = sel_registerName("setPackagePowerCeiling:fromDecisionSource:");
+    if (class_getInstanceMethod(c, s3)) {
+        MSHookMessageEx(c, s3, (IMP)tf_setPkgCeil, (IMP *)&tfOrigPkgCeil);
+        NSLog(@"[ThermalFuse] hooked setPackagePowerCeiling");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 setPackagePowerCeiling");
+    }
+
+    SEL s4 = sel_registerName("setMaxPackagePower:");
+    if (class_getInstanceMethod(c, s4)) {
+        MSHookMessageEx(c, s4, (IMP)tf_setMaxPkg, (IMP *)&tfOrigMaxPkg);
+        NSLog(@"[ThermalFuse] hooked setMaxPackagePower");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 setMaxPackagePower");
+    }
+
+    SEL s5 = sel_registerName("setCPMSMitigationsEnabled:");
+    if (class_getInstanceMethod(c, s5)) {
+        MSHookMessageEx(c, s5, (IMP)tf_setCPMS, (IMP *)&tfOrigCPMS);
+        NSLog(@"[ThermalFuse] hooked setCPMSMitigationsEnabled");
+    } else {
+        NSLog(@"[ThermalFuse] 缺 setCPMSMitigationsEnabled");
+    }
+}
+
+%group Core
+%hook CommonProduct
 
 - (void)tryTakeAction {
     TFLog(@"tryTakeAction 拦下");
@@ -337,7 +419,8 @@ static void TFInstallDictHook(void) {
 }
 
 - (void)setThermalState:(int)a3 {
-    %orig(0);
+    // 不调原实现：原方法往内核写热状态，不调用就等于不写。
+    // 之前这里用 %orig(0)，一旦方法不存在或签名不符就是 SIGBUS。
 }
 
 %end
@@ -353,39 +436,9 @@ static void TFInstallDictHook(void) {
 %end
 %end
 
-%group Mitigation
-%hook MitigationController
-
-- (void)setCPUPowerCeiling:(int)a3 fromDecisionSource:(int)a4 {
-    gMitigation = self;
-    %orig(TFApplyCeiling(a3), a4);
-}
-
-- (void)setGPUPowerCeiling:(int)a3 fromDecisionSource:(int)a4 {
-    gMitigation = self;
-    %orig(TFApplyCeiling(a3), a4);
-}
-
-- (void)setPackagePowerCeiling:(int)a3 fromDecisionSource:(int)a4 {
-    gMitigation = self;
-    %orig(TFApplyCeiling(a3), a4);
-}
-
-- (void)setMaxPackagePower:(int)a3 {
-    gMitigation = self;
-    %orig(TFApplyCeiling(a3));
-}
-
-- (void)setCPMSMitigationsEnabled:(BOOL)a3 {
-    %orig(TFBool(@"blockMitigation", NO) ? NO : a3);
-}
-
-%end
-%end
-
 %ctor {
     TFReloadPrefs();
-    NSLog(@"[ThermalFuse] 1.1.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
+    NSLog(@"[ThermalFuse] 1.3.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;
@@ -396,7 +449,7 @@ static void TFInstallDictHook(void) {
         %init(Sensors);
     }
 
-    %init(Mitigation);
+    TFInstallManualHooks();
 
     if (TFBool(@"patchThermalPlist", YES)) {
         TFInstallDictHook();
