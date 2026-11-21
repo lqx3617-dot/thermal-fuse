@@ -496,7 +496,7 @@ static void TFInstallClassHooks(void) {
 
 %ctor {
     TFReloadPrefs();
-    NSLog(@"[ThermalFuse] 1.4.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
+    NSLog(@"[ThermalFuse] 1.5.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;
