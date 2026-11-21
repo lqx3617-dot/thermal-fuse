@@ -496,7 +496,8 @@ static void TFInstallClassHooks(void) {
 
 %ctor {
     TFReloadPrefs();
-    TFEvent(@"1.5.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
+    TFWriteHeartbeat();
+    TFEvent(@"loaded in %@ pid=%d", [[NSProcessInfo processInfo] processName], getpid());
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;

@@ -36,6 +36,7 @@ static void TFHandleAppNote(NSNotification *note) {
 %ctor {
     @try {
         TFReloadPrefs();
+        TFWriteHeartbeat();
     } @catch (NSException *e) {
         TFEvent(@"SB 读偏好异常: %@", e);
     }

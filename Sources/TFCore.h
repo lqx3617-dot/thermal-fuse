@@ -42,6 +42,7 @@ BOOL TFBool(NSString *key, BOOL def);
 long TFLong(NSString *key, long def);
 NSString *TFStr(NSString *key, NSString *def);
 void TFWriteLive(NSDictionary *d);
+void TFWriteHeartbeat(void);
 void TFPostNotify(const char *name);
 
 BOOL TFIsSpringBoard(void);

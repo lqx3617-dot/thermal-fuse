@@ -166,3 +166,54 @@ void TFLogWrite(NSString *msg) {
         }
     });
 }
+
+#pragma mark - 心跳：写给「温控解除」这个 App 自己的容器
+// App 沙盒读不到 /var/jb，但它能读自己的 Documents。tweak 反向找到 App 容器，
+// 每次加载写一行，App 打开就能看到 dylib 到底有没有跑。
+
+static NSString *TFAppContainerPath(void) {
+    NSString *base = @"/var/mobile/Containers/Data/Application";
+    NSArray *dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:base error:nil];
+    for (NSString *d in dirs) {
+        NSString *meta = [base stringByAppendingPathComponent:d];
+        meta = [meta stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"];
+        NSDictionary *m = [NSDictionary dictionaryWithContentsOfFile:meta];
+        if ([m isKindOfClass:[NSDictionary class]] &&
+            [m[@"MCMMetadataIdentifier"] isEqualToString:@"com.lqx3617.thermalfuse.app"]) {
+            return [base stringByAppendingPathComponent:d];
+        }
+    }
+    return nil;
+}
+
+void TFWriteHeartbeat(void) {
+    @try {
+        NSString *container = TFAppContainerPath();
+        if (!container) return;
+        NSString *dir = [container stringByAppendingPathComponent:@"Documents"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                 withIntermediateDirectories:YES
+                                                  attributes:nil
+                                                       error:nil];
+        NSString *path = [dir stringByAppendingPathComponent:@"tweak-alive.txt"];
+        NSString *line = [NSString stringWithFormat:@"%@  %@ pid=%d\n",
+                          TFLogTimestamp(), [[NSProcessInfo processInfo] processName], getpid()];
+
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+        if (attrs && [attrs fileSize] > 32 * 1024) {
+            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            return;
+        }
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) {
+            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            return;
+        }
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] 写心跳失败: %@", e);
+    }
+}

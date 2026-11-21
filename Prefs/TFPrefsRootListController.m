@@ -4,6 +4,8 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
+#include <errno.h>
+#include <unistd.h>
 #import "TFPrefsRootListController.h"
 
 #pragma mark - 偏好读写
@@ -747,28 +749,65 @@ static CGFloat TFLevelRatio(NSString *raw) {
     self.textView.text = [self collect];
 }
 
+- (NSString *)stateFor:(NSString *)path {
+    if (access(path.UTF8String, F_OK) == 0) return @"[有]";
+    if (errno == EACCES || errno == EPERM) return @"[拒]";
+    return @"[缺]";
+}
+
 - (NSString *)collect {
     NSMutableString *s = [NSMutableString string];
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    [s appendString:@"== 关键文件 ==\n"];
+    // 心跳：tweak 加载时写进本 App 的 Documents
+    NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *beatPath = [docs stringByAppendingPathComponent:@"tweak-alive.txt"];
+    NSString *beat = [NSString stringWithContentsOfFile:beatPath encoding:NSUTF8StringEncoding error:nil];
+
+    [s appendString:@"== 结论 ==\n"];
+    if (beat.length) {
+        NSArray *lines = [beat componentsSeparatedByString:@"\n"];
+        NSString *last = @"";
+        for (NSString *l in lines) {
+            if (l.length) last = l;
+        }
+        [s appendFormat:@"tweak 在跑。最近一次：%@\n", last];
+    } else {
+        [s appendString:@"没有心跳 —— tweak 一行都没执行过，是注入问题。\n"];
+        [s appendString:@"先看 Relaxin 的 tweak 注入开关，再重启用户空间。\n"];
+    }
+
+    [s appendString:@"\n== 文件 ==\n"];
+    [s appendString:@"[有] 能读  [拒] 沙盒拒绝  [缺] 不存在\n"];
     NSArray *paths = @[
         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.dylib",
         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist",
         @"/var/jb/usr/lib/libellekit.dylib",
         @"/var/jb/usr/lib/libsubstrate.dylib",
         @"/var/jb/usr/lib/libroothide.dylib",
-        @"/var/jb/usr/lib/libroot.dylib",
+        @"/var/jb/Library/PreferenceBundles/ThermalFusePrefs.bundle/ThermalFusePrefs",
     ];
     for (NSString *p in paths) {
-        BOOL exists = [fm fileExistsAtPath:p];
-        [s appendFormat:@"%@  %@\n", exists ? @"[有]" : @"[缺]", [p lastPathComponent]];
+        [s appendFormat:@"%@  %@\n", [self stateFor:p], [p lastPathComponent]];
+    }
+
+    [s appendString:@"\n== 心跳文件 ==\n"];
+    [s appendFormat:@"%@\n", beatPath];
+    if (beat.length) {
+        NSArray *lines = [beat componentsSeparatedByString:@"\n"];
+        if (lines.count > 12) {
+            lines = [lines subarrayWithRange:NSMakeRange(lines.count - 12, 12)];
+        }
+        [s appendFormat:@"%@\n", [lines componentsJoinedByString:@"\n"]];
+    } else {
+        [s appendString:@"（空）\n"];
     }
 
     [s appendString:@"\n== 注入范围 ==\n"];
-    NSString *filterPath = @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist";
-    NSString *filter = [NSString stringWithContentsOfFile:filterPath encoding:NSUTF8StringEncoding error:nil];
-    [s appendFormat:@"%@\n", filter.length ? filter : @"读不到 Filter plist"];
+    NSString *filter = [NSString stringWithContentsOfFile:
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist"
+                                                encoding:NSUTF8StringEncoding error:nil];
+    [s appendFormat:@"%@\n", filter.length ? filter : @"读不到（多半是沙盒，正常）"];
 
     [s appendString:@"\n== 日志文件 ==\n"];
     NSString *logPath = @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.log";
@@ -776,22 +815,13 @@ static CGFloat TFLevelRatio(NSString *raw) {
     if (la) {
         [s appendFormat:@"%@\n最后修改：%@\n", logPath, la[NSFileModificationDate]];
     } else {
-        [s appendString:@"还没有日志文件，说明 tweak 没跑过一行代码\n"];
+        [s appendString:@"还没有日志文件\n"];
     }
 
     [s appendString:@"\n== 偏好 ==\n"];
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:
         @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.plist"];
     [s appendFormat:@"%@\n", prefs ?: @"读不到"];
-
-    [s appendString:@"\n== 自检 ==\n"];
-    NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:
-        @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.live.plist"];
-    [s appendFormat:@"%@\n", live ?: @"还没有"];
-
-    [s appendString:@"\n== 说明 ==\n"];
-    [s appendString:@"dylib 和 Filter 都在、日志却为空 = 注入没生效。\n"];
-    [s appendString:@"先看 Relaxin 里的 tweak 注入开关是否打开。\n"];
 
     return s;
 }
