@@ -71,6 +71,10 @@ static CGFloat TFLevelRatio(NSString *raw) {
     return 0.6;
 }
 
+@interface TFDiagController : UIViewController
+@property (nonatomic, strong) UITextView *textView;
+@end
+
 @interface TFLogController : UIViewController
 @property (nonatomic, strong) UITextView *textView;
 @end
@@ -288,6 +292,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
         @{@"footer": @"温控解除的每一项都能单独关，出问题先来这里排查。",
           @"rows": @[
               @{@"type": @"nav", @"title": @"运行日志", @"action": @"log"},
+              @{@"type": @"nav", @"title": @"诊断信息", @"action": @"diag"},
               @{@"type": @"nav", @"title": @"高级设置", @"action": @"advanced"},
           ]},
     ];
@@ -423,6 +428,11 @@ static CGFloat TFLevelRatio(NSString *raw) {
 
     if ([type isEqualToString:@"button"] && [action isEqualToString:@"selftest"]) {
         [self runSelfTest];
+        return;
+    }
+
+    if ([type isEqualToString:@"nav"] && [action isEqualToString:@"diag"]) {
+        [self.navigationController pushViewController:[TFDiagController new] animated:YES];
         return;
     }
 
@@ -691,6 +701,105 @@ static CGFloat TFLevelRatio(NSString *raw) {
     NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ThermalFuse-日志.txt"];
     [full writeToFile:tmp atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
+    UIActivityViewController *vc = [[UIActivityViewController alloc]
+        initWithActivityItems:@[[NSURL fileURLWithPath:tmp]] applicationActivities:nil];
+    vc.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;
+    [self presentViewController:vc animated:YES completion:nil];
+}
+
+@end
+
+
+#pragma mark - 诊断页
+
+@implementation TFDiagController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"诊断";
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+
+    self.textView = [UITextView new];
+    self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.textView.editable = NO;
+    self.textView.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+    self.textView.textContainerInset = UIEdgeInsetsMake(12, 12, 12, 12);
+    self.textView.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
+    self.textView.layer.cornerRadius = 12;
+    self.textView.clipsToBounds = YES;
+    [self.view addSubview:self.textView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.textView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:12],
+        [self.textView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [self.textView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+        [self.textView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12],
+    ]];
+
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
+                                                      target:self
+                                                      action:@selector(shareDiag)];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.textView.text = [self collect];
+}
+
+- (NSString *)collect {
+    NSMutableString *s = [NSMutableString string];
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    [s appendString:@"== 关键文件 ==\n"];
+    NSArray *paths = @[
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.dylib",
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist",
+        @"/var/jb/usr/lib/libellekit.dylib",
+        @"/var/jb/usr/lib/libsubstrate.dylib",
+        @"/var/jb/usr/lib/libroothide.dylib",
+        @"/var/jb/usr/lib/libroot.dylib",
+    ];
+    for (NSString *p in paths) {
+        BOOL exists = [fm fileExistsAtPath:p];
+        [s appendFormat:@"%@  %@\n", exists ? @"[有]" : @"[缺]", [p lastPathComponent]];
+    }
+
+    [s appendString:@"\n== 注入范围 ==\n"];
+    NSString *filterPath = @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist";
+    NSString *filter = [NSString stringWithContentsOfFile:filterPath encoding:NSUTF8StringEncoding error:nil];
+    [s appendFormat:@"%@\n", filter.length ? filter : @"读不到 Filter plist"];
+
+    [s appendString:@"\n== 日志文件 ==\n"];
+    NSString *logPath = @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.log";
+    NSDictionary *la = [fm attributesOfItemAtPath:logPath error:nil];
+    if (la) {
+        [s appendFormat:@"%@\n最后修改：%@\n", logPath, la[NSFileModificationDate]];
+    } else {
+        [s appendString:@"还没有日志文件，说明 tweak 没跑过一行代码\n"];
+    }
+
+    [s appendString:@"\n== 偏好 ==\n"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:
+        @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.plist"];
+    [s appendFormat:@"%@\n", prefs ?: @"读不到"];
+
+    [s appendString:@"\n== 自检 ==\n"];
+    NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:
+        @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.live.plist"];
+    [s appendFormat:@"%@\n", live ?: @"还没有"];
+
+    [s appendString:@"\n== 说明 ==\n"];
+    [s appendString:@"dylib 和 Filter 都在、日志却为空 = 注入没生效。\n"];
+    [s appendString:@"先看 Relaxin 里的 tweak 注入开关是否打开。\n"];
+
+    return s;
+}
+
+- (void)shareDiag {
+    NSString *text = self.textView.text ?: [self collect];
+    NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ThermalFuse-诊断.txt"];
+    [text writeToFile:tmp atomically:YES encoding:NSUTF8StringEncoding error:nil];
     UIActivityViewController *vc = [[UIActivityViewController alloc]
         initWithActivityItems:@[[NSURL fileURLWithPath:tmp]] applicationActivities:nil];
     vc.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;

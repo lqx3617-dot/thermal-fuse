@@ -1,29 +1,15 @@
 // ThermalFuse 共享层实现
 #import "TFCore.h"
 
-#if __has_include(<roothide.h>)
-#import <roothide.h>
-#elif __has_include(<rootless.h>)
-#import <rootless.h>
-#endif
 
 BOOL gVerbose = NO;
 static NSDictionary *gPrefs = nil;
 
+// 不链接 libroot / libroothide：RootHide 下这两个库不一定在，
+// 缺一个 dylib 就加载失败，表现是「装上了但完全没反应」。
+// 直接读写真实路径，绕过 jbroot 重映射。
 NSString *TFPath(NSString *p) {
-    if (!p.length) return p;
-#if __has_include(<roothide.h>)
-    const char *r = jbroot(p.UTF8String);
-    if (!r) {
-        NSLog(@"[ThermalFuse] jbroot 返回 NULL，退回原路径");
-        return p;
-    }
-    return [NSString stringWithUTF8String:r];
-#elif __has_include(<rootless.h>)
-    return [NSString stringWithUTF8String:ROOT_PATH(p.UTF8String)];
-#else
-    return p;
-#endif
+    return p ?: @"";
 }
 
 void TFReloadPrefs(void) {
