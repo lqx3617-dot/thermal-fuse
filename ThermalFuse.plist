@@ -1,1 +1,1 @@
-{ Filter = { Executables = ( "thermalmonitord", "SpringBoard" ); }; }
+{ Filter = { Executables = ( "thermalmonitord" ); }; }
