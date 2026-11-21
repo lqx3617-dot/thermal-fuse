@@ -165,7 +165,7 @@ static void TFFinishSelfTest(void) {
         @"switchCount": @(gSwitchCount),
     });
 
-    NSLog(@"[ThermalFuse] 自检完成：%@", text);
+    TFEvent(@"自检完成：%@", text);
 }
 
 static void TFStartSelfTest(void) {
@@ -193,7 +193,7 @@ static void TFStartSelfTest(void) {
         }
     });
     dispatch_resume(gTestTimer);
-    NSLog(@"[ThermalFuse] 自检开始，30 秒");
+    TFEvent(@"自检开始，30 秒");
 }
 
 static void TFStartTick(void) {
@@ -276,15 +276,15 @@ static void TFInstallDictHook(void) {
     Class meta = object_getClass((id)cls);
     SEL s = sel_registerName("dictionaryWithContentsOfFile:");
     if (!meta || !class_getClassMethod(cls, s)) {
-        NSLog(@"[ThermalFuse] 类方法 dictionaryWithContentsOfFile: 找不到，跳过");
+        TFEvent(@"类方法 dictionaryWithContentsOfFile: 找不到，跳过");
         return;
     }
     MSHookMessageEx(meta, s, (IMP)tf_dictWithContents, (IMP *)&tf_origDictWithContents);
     if (!tf_origDictWithContents) {
-        NSLog(@"[ThermalFuse] 类方法 hook 失败，orig 为空，后续调用会崩，立刻撤退");
+        TFEvent(@"类方法 hook 失败，orig 为空，后续调用会崩，立刻撤退");
         return;
     }
-    NSLog(@"[ThermalFuse] hooked NSDictionary.dictionaryWithContentsOfFile:");
+    TFEvent(@"hooked NSDictionary.dictionaryWithContentsOfFile:");
 }
 
 #pragma mark - 温控解除
@@ -358,55 +358,55 @@ static void TFInstallManualHooks(void) {
     SEL initSel = sel_registerName("initProduct:");
     if (prod && class_getInstanceMethod(prod, initSel)) {
         MSHookMessageEx(prod, initSel, (IMP)tf_initProduct, (IMP *)&tfOrigInitProduct);
-        NSLog(@"[ThermalFuse] hooked CommonProduct.initProduct:");
+        TFEvent(@"hooked CommonProduct.initProduct:");
     } else {
-        NSLog(@"[ThermalFuse] 缺 CommonProduct.initProduct:，跳过");
+        TFEvent(@"缺 CommonProduct.initProduct:，跳过");
     }
 
     Class c = objc_getClass("MitigationController");
     if (!c) {
-        NSLog(@"[ThermalFuse] 没有 MitigationController，档位引擎不生效");
+        TFEvent(@"没有 MitigationController，档位引擎不生效");
         return;
     }
 
     SEL s1 = sel_registerName("setCPUPowerCeiling:fromDecisionSource:");
     if (class_getInstanceMethod(c, s1)) {
         MSHookMessageEx(c, s1, (IMP)tf_setCPUCeil, (IMP *)&tfOrigCPUCeil);
-        NSLog(@"[ThermalFuse] hooked setCPUPowerCeiling");
+        TFEvent(@"hooked setCPUPowerCeiling");
     } else {
-        NSLog(@"[ThermalFuse] 缺 setCPUPowerCeiling");
+        TFEvent(@"缺 setCPUPowerCeiling");
     }
 
     SEL s2 = sel_registerName("setGPUPowerCeiling:fromDecisionSource:");
     if (class_getInstanceMethod(c, s2)) {
         MSHookMessageEx(c, s2, (IMP)tf_setGPUCeil, (IMP *)&tfOrigGPUCeil);
-        NSLog(@"[ThermalFuse] hooked setGPUPowerCeiling");
+        TFEvent(@"hooked setGPUPowerCeiling");
     } else {
-        NSLog(@"[ThermalFuse] 缺 setGPUPowerCeiling");
+        TFEvent(@"缺 setGPUPowerCeiling");
     }
 
     SEL s3 = sel_registerName("setPackagePowerCeiling:fromDecisionSource:");
     if (class_getInstanceMethod(c, s3)) {
         MSHookMessageEx(c, s3, (IMP)tf_setPkgCeil, (IMP *)&tfOrigPkgCeil);
-        NSLog(@"[ThermalFuse] hooked setPackagePowerCeiling");
+        TFEvent(@"hooked setPackagePowerCeiling");
     } else {
-        NSLog(@"[ThermalFuse] 缺 setPackagePowerCeiling");
+        TFEvent(@"缺 setPackagePowerCeiling");
     }
 
     SEL s4 = sel_registerName("setMaxPackagePower:");
     if (class_getInstanceMethod(c, s4)) {
         MSHookMessageEx(c, s4, (IMP)tf_setMaxPkg, (IMP *)&tfOrigMaxPkg);
-        NSLog(@"[ThermalFuse] hooked setMaxPackagePower");
+        TFEvent(@"hooked setMaxPackagePower");
     } else {
-        NSLog(@"[ThermalFuse] 缺 setMaxPackagePower");
+        TFEvent(@"缺 setMaxPackagePower");
     }
 
     SEL s5 = sel_registerName("setCPMSMitigationsEnabled:");
     if (class_getInstanceMethod(c, s5)) {
         MSHookMessageEx(c, s5, (IMP)tf_setCPMS, (IMP *)&tfOrigCPMS);
-        NSLog(@"[ThermalFuse] hooked setCPMSMitigationsEnabled");
+        TFEvent(@"hooked setCPMSMitigationsEnabled");
     } else {
-        NSLog(@"[ThermalFuse] 缺 setCPMSMitigationsEnabled");
+        TFEvent(@"缺 setCPMSMitigationsEnabled");
     }
 }
 
@@ -456,26 +456,26 @@ static void TFHookOrAdd(Class c, const char *selName, IMP imp, const char *types
     if (class_getInstanceMethod(c, s)) {
         IMP dummy = NULL;
         MSHookMessageEx(c, s, imp, origOut ? origOut : &dummy);
-        NSLog(@"[ThermalFuse] hooked %s", selName);
+        TFEvent(@"hooked %s", selName);
     } else if (types) {
         class_addMethod(c, s, imp, types);
-        NSLog(@"[ThermalFuse] 补方法 %s", selName);
+        TFEvent(@"补方法 %s", selName);
     } else {
-        NSLog(@"[ThermalFuse] 缺 %s，跳过", selName);
+        TFEvent(@"缺 %s，跳过", selName);
     }
 }
 
 static void TFInstallClassHooks(void) {
     Class prod = objc_getClass("CommonProduct");
     if (!prod) {
-        NSLog(@"[ThermalFuse] 没有 CommonProduct，温控解除不生效");
+        TFEvent(@"没有 CommonProduct，温控解除不生效");
     } else {
         SEL initSel = sel_registerName("initProduct:");
         if (class_getInstanceMethod(prod, initSel)) {
             MSHookMessageEx(prod, initSel, (IMP)tf_initProduct, (IMP *)&tfOrigInitProduct);
-            NSLog(@"[ThermalFuse] hooked CommonProduct.initProduct:");
+            TFEvent(@"hooked CommonProduct.initProduct:");
         } else {
-            NSLog(@"[ThermalFuse] 缺 initProduct:，跳过");
+            TFEvent(@"缺 initProduct:，跳过");
         }
 
         TFHookOrAdd(prod, "tryTakeAction", (IMP)tf_tryTakeAction, "v@:", (IMP *)&tfOrigTryAction);
@@ -488,7 +488,7 @@ static void TFInstallClassHooks(void) {
 
     Class hid = objc_getClass("HidSensors");
     if (!hid) {
-        NSLog(@"[ThermalFuse] 没有 HidSensors，传感器屏蔽不生效");
+        TFEvent(@"没有 HidSensors，传感器屏蔽不生效");
     } else {
         TFHookOrAdd(hid, "handleTemperatureEvent:service:", (IMP)tf_handleTemp, "v@:i@", (IMP *)&tfOrigHandleTemp);
     }
@@ -496,7 +496,7 @@ static void TFInstallClassHooks(void) {
 
 %ctor {
     TFReloadPrefs();
-    NSLog(@"[ThermalFuse] 1.5.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
+    TFEvent(@"1.5.0 loaded in %@", [[NSProcessInfo processInfo] processName]);
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;
@@ -506,7 +506,7 @@ static void TFInstallClassHooks(void) {
     if (TFBool(@"engineEnabled", NO)) {
         TFInstallManualHooks();
     } else {
-        NSLog(@"[ThermalFuse] 档位引擎未开启（高级设置里可以开）");
+        TFEvent(@"档位引擎未开启（高级设置里可以开）");
     }
 
     if (TFBool(@"patchThermalPlist", YES)) {

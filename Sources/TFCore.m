@@ -122,3 +122,61 @@ NSString *TFLevelName(TFLevel l) {
         default: return @"auto";
     }
 }
+
+#pragma mark - 日志文件
+
+static dispatch_queue_t gLogQueue = NULL;
+static NSDateFormatter *gLogFormatter = nil;
+
+static NSString *TFLogTimestamp(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gLogFormatter = [[NSDateFormatter alloc] init];
+        gLogFormatter.dateFormat = @"MM-dd HH:mm:ss";
+    });
+    @synchronized (gLogFormatter) {
+        return [gLogFormatter stringFromDate:[NSDate date]];
+    }
+}
+
+static void TFAppendToFile(NSString *path, NSString *line) {
+    if (!path.length) return;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+    if (attrs && [attrs fileSize] > 200 * 1024) {
+        NSData *d = [NSData dataWithContentsOfFile:path];
+        if (d.length > 100 * 1024) {
+            d = [d subdataWithRange:NSMakeRange(d.length - 100 * 1024, 100 * 1024)];
+        }
+        [d writeToFile:path atomically:YES];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) {
+        [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
+    @try {
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] 写日志失败: %@", e);
+    }
+}
+
+void TFLogWrite(NSString *msg) {
+    if (![msg isKindOfClass:[NSString class]] || !msg.length) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gLogQueue = dispatch_queue_create("com.lqx3617.thermalfuse.log", DISPATCH_QUEUE_SERIAL);
+    });
+    NSString *line = [NSString stringWithFormat:@"%@  %@\n", TFLogTimestamp(), msg];
+    NSString *jb = TFPath(@TF_LOG_PATH);
+    NSString *real = @TF_LOG_PATH;
+    dispatch_async(gLogQueue, ^{
+        TFAppendToFile(jb, line);
+        if (![jb isEqualToString:real]) {
+            TFAppendToFile(real, line);
+        }
+    });
+}

@@ -37,14 +37,14 @@ static void TFHandleAppNote(NSNotification *note) {
     @try {
         TFReloadPrefs();
     } @catch (NSException *e) {
-        NSLog(@"[ThermalFuse] SB 读偏好异常: %@", e);
+        TFEvent(@"SB 读偏好异常: %@", e);
     }
 
     if (!TFIsSpringBoard()) return;
 
     // 总闸：万一 SpringBoard 侧把系统搞进安全模式，先关这里，不用卸载
     if (!TFBool(@"sbEnabled", YES)) {
-        NSLog(@"[ThermalFuse] SpringBoard 侧被 sbEnabled 关掉了");
+        TFEvent(@"SpringBoard 侧被 sbEnabled 关掉了");
         return;
     }
 
@@ -52,7 +52,7 @@ static void TFHandleAppNote(NSNotification *note) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2ull * NSEC_PER_SEC),
                    dispatch_get_main_queue(), ^{
         @try {
-            NSLog(@"[ThermalFuse] SpringBoard 侧加载");
+            TFEvent(@"SpringBoard 侧加载");
             for (NSString *name in @[@"SBApplicationDidBecomeActiveNotification",
                                      @"SBApplicationDidChangeForegroundNotification",
                                      @"UIApplicationDidBecomeActiveNotification"]) {
@@ -69,7 +69,7 @@ static void TFHandleAppNote(NSNotification *note) {
                 }];
             }
         } @catch (NSException *e) {
-            NSLog(@"[ThermalFuse] SpringBoard 初始化异常: %@", e);
+            TFEvent(@"SpringBoard 初始化异常: %@", e);
         }
     });
 }

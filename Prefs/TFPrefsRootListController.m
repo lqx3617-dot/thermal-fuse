@@ -71,6 +71,10 @@ static CGFloat TFLevelRatio(NSString *raw) {
     return 0.6;
 }
 
+@interface TFLogController : UIViewController
+@property (nonatomic, strong) UITextView *textView;
+@end
+
 #pragma mark - 状态卡片
 
 @interface TFCardCell : UITableViewCell
@@ -282,7 +286,10 @@ static CGFloat TFLevelRatio(NSString *raw) {
               @{@"type": @"switch", @"title": @"启动后自动自检", @"key": @"selfTestOnStart", @"def": @YES},
           ]},
         @{@"footer": @"温控解除的每一项都能单独关，出问题先来这里排查。",
-          @"rows": @[@{@"type": @"nav", @"title": @"高级设置", @"action": @"advanced"}]},
+          @"rows": @[
+              @{@"type": @"nav", @"title": @"运行日志", @"action": @"log"},
+              @{@"type": @"nav", @"title": @"高级设置", @"action": @"advanced"},
+          ]},
     ];
 }
 
@@ -416,6 +423,11 @@ static CGFloat TFLevelRatio(NSString *raw) {
 
     if ([type isEqualToString:@"button"] && [action isEqualToString:@"selftest"]) {
         [self runSelfTest];
+        return;
+    }
+
+    if ([type isEqualToString:@"nav"] && [action isEqualToString:@"log"]) {
+        [self.navigationController pushViewController:[TFLogController new] animated:YES];
         return;
     }
 
@@ -588,6 +600,101 @@ static CGFloat TFLevelRatio(NSString *raw) {
         }]];
         [self presentViewController:alert animated:YES completion:nil];
     }
+}
+
+@end
+
+
+#pragma mark - 运行日志页
+
+@implementation TFLogController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"运行日志";
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+
+    self.textView = [UITextView new];
+    self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.textView.editable = NO;
+    self.textView.alwaysBounceVertical = YES;
+    self.textView.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+    self.textView.textContainerInset = UIEdgeInsetsMake(12, 12, 12, 12);
+    self.textView.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
+    self.textView.layer.cornerRadius = 12;
+    self.textView.clipsToBounds = YES;
+    [self.view addSubview:self.textView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.textView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:12],
+        [self.textView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [self.textView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+        [self.textView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12],
+    ]];
+
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
+                                                      target:self
+                                                      action:@selector(shareLog)];
+    [self reloadLog];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self reloadLog];
+}
+
+- (NSString *)logPath {
+    return @"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.log";
+}
+
+- (void)reloadLog {
+    NSString *text = [NSString stringWithContentsOfFile:[self logPath]
+                                               encoding:NSUTF8StringEncoding
+                                                  error:nil];
+    if (!text.length) {
+        self.textView.text = @"还没有日志。\n\n装上后没动过的话，日志里只有启动那几行；"
+                              "把高级设置里的「输出日志」打开，用一会儿再回来。";
+        return;
+    }
+    NSArray *lines = [text componentsSeparatedByString:@"\n"];
+    if (lines.count > 400) {
+        lines = [lines subarrayWithRange:NSMakeRange(lines.count - 400, 400)];
+    }
+    self.textView.text = [lines componentsJoinedByString:@"\n"];
+    [self.textView scrollRangeToVisible:NSMakeRange(0, 0)];
+}
+
+- (void)shareLog {
+    NSString *path = [self logPath];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"还没有日志文件"
+                                                                   message:@"用一会儿再来"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+        [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:a animated:YES completion:nil];
+        return;
+    }
+
+    // 顺手把偏好和自检结果塞进同目录，导出的东西一次看全
+    NSMutableString *extra = [NSMutableString string];
+    [extra appendString:@"\n===== prefs =====\n"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.plist"];
+    [extra appendFormat:@"%@\n", prefs ?: @{}];
+    [extra appendString:@"\n===== live =====\n"];
+    NSDictionary *live = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.live.plist"];
+    [extra appendFormat:@"%@\n", live ?: @{}];
+
+    NSString *bundleText = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    NSString *full = [bundleText stringByAppendingString:extra];
+
+    NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ThermalFuse-日志.txt"];
+    [full writeToFile:tmp atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    UIActivityViewController *vc = [[UIActivityViewController alloc]
+        initWithActivityItems:@[[NSURL fileURLWithPath:tmp]] applicationActivities:nil];
+    vc.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;
+    [self presentViewController:vc animated:YES completion:nil];
 }
 
 @end

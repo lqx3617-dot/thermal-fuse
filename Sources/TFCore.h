@@ -7,6 +7,7 @@
 #define TF_PREFS_PATH "/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.plist"
 #define TF_LIVE_PATH  "/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.live.plist"
 #define TF_FG_PATH    "/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.fg.plist"
+#define TF_LOG_PATH   "/var/mobile/Library/Preferences/com.lqx3617.thermalfuse.log"
 
 #define TF_NOTIFY_RELOAD  "com.lqx3617.thermalfuse/reload"
 #define TF_NOTIFY_FG      "com.lqx3617.thermalfuse/foreground"
@@ -25,8 +26,14 @@ extern "C" {
 extern BOOL gVerbose;
 
 
+// 关键事件：始终写日志文件 + syslog
+void TFLogWrite(NSString *msg);
+#define TFEvent(fmt, ...) TFLogWrite([NSString stringWithFormat:fmt, ##__VA_ARGS__])
+
+// 高频细节：只在 verbose 打开时才记
 #define TFLog(fmt, ...) \
-    do { if (gVerbose) NSLog(@"[ThermalFuse] " fmt, ##__VA_ARGS__); } while (0)
+    do { if (gVerbose) { NSLog(@"[ThermalFuse] " fmt, ##__VA_ARGS__); \
+         TFLogWrite([NSString stringWithFormat:fmt, ##__VA_ARGS__]); } } while (0)
 
 NSString *TFPath(NSString *p);
 void TFReloadPrefs(void);
