@@ -525,6 +525,7 @@ static CGFloat TFLevelRatio(NSString *raw) {
         @{@"type": @"switch", @"title": @"屏蔽温度传感器上报", @"key": @"blockSensorEvents", @"def": @YES},
         @{@"type": @"switch", @"title": @"改写 ThermalMonitor 配置", @"key": @"patchThermalPlist", @"def": @YES},
         @{@"type": @"switch", @"title": @"关闭 CPMS 缓解（激进）", @"key": @"blockMitigation", @"def": @NO},
+        @{@"type": @"switch", @"title": @"SpringBoard 侧（游戏识别）", @"key": @"sbEnabled", @"def": @YES},
         @{@"type": @"switch", @"title": @"输出日志", @"key": @"verbose", @"def": @NO},
         @{@"type": @"value", @"title": @"背光功率上限", @"key": @"cpuMaxPower", @"numeric": @YES},
     ];

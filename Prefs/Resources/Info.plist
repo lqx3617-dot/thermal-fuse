@@ -11,9 +11,9 @@
 	<key>CFBundleName</key>
 	<string>ThermalFusePrefs</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.2.0</string>
+	<string>1.2.1</string>
 	<key>CFBundleVersion</key>
-	<string>1.2.0</string>
+	<string>1.2.1</string>
 	<key>NSPrincipalClass</key>
 	<string>TFPrefsRootListController</string>
 	<key>MinimumOSVersion</key>

@@ -13,7 +13,12 @@ static NSDictionary *gPrefs = nil;
 NSString *TFPath(NSString *p) {
     if (!p.length) return p;
 #if __has_include(<roothide.h>)
-    return [NSString stringWithUTF8String:jbroot(p.UTF8String)];
+    const char *r = jbroot(p.UTF8String);
+    if (!r) {
+        NSLog(@"[ThermalFuse] jbroot 返回 NULL，退回原路径");
+        return p;
+    }
+    return [NSString stringWithUTF8String:r];
 #elif __has_include(<rootless.h>)
     return [NSString stringWithUTF8String:ROOT_PATH(p.UTF8String)];
 #else
@@ -22,6 +27,7 @@ NSString *TFPath(NSString *p) {
 }
 
 void TFReloadPrefs(void) {
+    @try {
     NSMutableDictionary *merged = [NSMutableDictionary dictionary];
 
     // RootHide 里那份（tweak 写的）
@@ -34,6 +40,11 @@ void TFReloadPrefs(void) {
 
     gPrefs = merged;
     gVerbose = [gPrefs[@"verbose"] boolValue];
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] 偏好读取异常: %@", e);
+        gPrefs = @{};
+        gVerbose = NO;
+    }
 }
 
 NSDictionary *TFPrefs(void) {
