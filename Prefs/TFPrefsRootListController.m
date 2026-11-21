@@ -144,7 +144,19 @@ static BOOL TFRespringViaFrontBoard(void) {
     }
     if (!action) return NO;
 
-    id service = [serviceCls performSelector:NSSelectorFromString(@"sharedService")];
+    id service = nil;
+    SEL sharedSel = NSSelectorFromString(@"sharedService");
+    if (![serviceCls respondsToSelector:sharedSel]) return NO;
+    @try {
+        NSMethodSignature *sig = [serviceCls methodSignatureForSelector:sharedSel];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:(id)serviceCls];
+        [inv setSelector:sharedSel];
+        [inv invoke];
+        [inv getReturnValue:&service];
+    } @catch (NSException *e) {
+        return NO;
+    }
     if (!service) return NO;
 
     SEL sendSel = NSSelectorFromString(@"sendActions:withResult:");
@@ -179,6 +191,14 @@ static BOOL TFDoRespring(void) {
     if (sb > 0) return kill(sb, SIGKILL) == 0;
     return NO;
 }
+
+@interface TFDiagController : UIViewController
+@property (nonatomic, strong) UITextView *textView;
+@end
+
+@interface TFLogController : UIViewController
+@property (nonatomic, strong) UITextView *textView;
+@end
 
 #pragma mark - 状态卡片
 
