@@ -1,8 +1,16 @@
 #!/bin/bash
+DYLIB=/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.dylib
+
+# dpkg 以 root 执行这里，顺手把 dylib 重签一次：
+# Linux 工具链产的签名在 arm64e 进程里可能过不了校验，设备自带的 ldid 更靠谱。
+for LDID in /var/jb/usr/bin/ldid /usr/bin/ldid /var/jb/usr/local/bin/ldid; do
+    if [ -x "$LDID" ] && [ -f "$DYLIB" ]; then
+        "$LDID" -S "$DYLIB" 2>&1
+        CODE=$?
+        echo "ThermalFuse: resigned with $LDID (exit $CODE)"
+        break
+    fi
+done
+
 killall -9 thermalmonitord 2>/dev/null
-if [ -x /var/jb/usr/bin/uicache ]; then
-  /var/jb/usr/bin/uicache -a >/dev/null 2>&1
-elif [ -x /usr/bin/uicache ]; then
-  /usr/bin/uicache -a >/dev/null 2>&1
-fi
 exit 0
