@@ -949,6 +949,39 @@ static BOOL TFDoRespring(void) {
         [s appendString:@"（空）\n"];
     }
 
+    [s appendString:@"\n== jbroot 定位 ==\n"];
+    {
+        char buf[PATH_MAX];
+        ssize_t n = readlink("/var/jb", buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = 0;
+            [s appendFormat:@"/var/jb -> %s\n", buf];
+        } else if ([[NSFileManager defaultManager] fileExistsAtPath:@"/var/jb"]) {
+            [s appendString:@"/var/jb 存在（真实目录）\n"];
+        } else {
+            [s appendString:@"/var/jb 不存在\n"];
+        }
+
+        NSError *err = nil;
+        NSArray *dirs = [[NSFileManager defaultManager]
+            contentsOfDirectoryAtPath:@"/var/containers/Bundle/Application" error:&err];
+        if (!dirs) {
+            [s appendFormat:@"读不到容器目录：%@\n", err.localizedDescription ?: @"沙盒拒绝"];
+        } else {
+            int hit = 0;
+            for (NSString *d in dirs) {
+                if ([d rangeOfString:@"jbroot"].location == NSNotFound) continue;
+                NSString *root = [@"/var/containers/Bundle/Application" stringByAppendingPathComponent:d];
+                NSString *dylib = [root stringByAppendingPathComponent:
+                    @"Library/MobileSubstrate/DynamicLibraries/ThermalFuse.dylib"];
+                BOOL e = [[NSFileManager defaultManager] fileExistsAtPath:dylib];
+                [s appendFormat:@"%@ %@\n", e ? @"[有]" : @"[空]", d];
+                if (e) hit++;
+            }
+            if (!hit) [s appendString:@"jbroot 里没找到 ThermalFuse.dylib\n"];
+        }
+    }
+
     [s appendString:@"\n== 注入范围 ==\n"];
     NSString *filter = [NSString stringWithContentsOfFile:
         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.plist"

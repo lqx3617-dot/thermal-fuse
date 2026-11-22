@@ -1,6 +1,6 @@
 Package: com.lqx3617.thermalfuse
 Name: ThermalFuse
-Version: 1.9.3
+Version: 2.0.0
 Architecture: iphoneos-arm64
 Description: 温控解除 + 智能档位（Relaxin / RootHide）
 Maintainer: lqx3617
