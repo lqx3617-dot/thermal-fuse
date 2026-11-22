@@ -43,7 +43,11 @@ jobs:
           # clang 19 的包里缺 libc++ 的 __config_site，补一个最小的
           CXXDIR="$THEOS/toolchain/linux/iphone/include/c++/v1"
           if [ -d "$CXXDIR" ] && [ ! -f "$CXXDIR/__config_site" ]; then
-            printf '#define _LIBCPP_ABI_VERSION 1\n#define _LIBCPP_ABI_NAMESPACE __1\n' > "$CXXDIR/__config_site"
+            {
+              echo '#define _LIBCPP_ABI_VERSION 1'
+              echo '#define _LIBCPP_ABI_NAMESPACE __1'
+              echo '#define _LIBCPP_HARDENING_MODE_DEFAULT _LIBCPP_HARDENING_MODE_NONE'
+            } > "$CXXDIR/__config_site"
             echo "created __config_site"
           fi
           "$THEOS/toolchain/linux/iphone/bin/clang" --version | head -2
