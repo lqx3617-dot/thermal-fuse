@@ -1,5 +1,7 @@
 // ThermalFuse — SpringBoard 侧：只干一件事，把前台 App 的 bundle id 报出去。
 // 不 hook 任何 SB 私有方法，只挂通知，最坏情况是功能失效而不是白苹果。
+#define TF_PROBE 1
+
 #import "TFCore.h"
 
 static void TFReportForeground(NSString *bid) {
@@ -42,6 +44,11 @@ static void TFHandleAppNote(NSNotification *note) {
     }
 
     if (!TFIsSpringBoard()) return;
+
+#if TF_PROBE
+    TFEvent(@"PROBE sb loaded pid=%d", getpid());
+    return;
+#endif
 
     // 总闸：万一 SpringBoard 侧把系统搞进安全模式，先关这里，不用卸载
     if (!TFBool(@"sbEnabled", YES)) {

@@ -1,4 +1,6 @@
 // ThermalFuse — thermalmonitord 侧：档位引擎、定时切档、自检、温控解除
+#define TF_PROBE 1
+
 #import "TFCore.h"
 #import <substrate.h>
 #import <objc/runtime.h>
@@ -497,7 +499,11 @@ static void TFInstallClassHooks(void) {
 %ctor {
     TFReloadPrefs();
     TFWriteHeartbeat();
-    TFEvent(@"loaded in %@ pid=%d", [[NSProcessInfo processInfo] processName], getpid());
+    TFEvent(@"PROBE loaded in %@ pid=%d", [[NSProcessInfo processInfo] processName], getpid());
+
+#if TF_PROBE
+    return;   // 探针模式：只证明 dylib 能加载，不装任何 hook
+#endif
 
     if (!TFIsThermalmonitord()) return;
     if (!TFBool(@"enabled", YES)) return;
