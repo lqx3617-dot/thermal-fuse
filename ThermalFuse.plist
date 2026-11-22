@@ -6,11 +6,7 @@
 	<dict>
 		<key>Bundles</key>
 		<array>
-			<string>com.apple.springboard</string>
-		</array>
-		<key>Executables</key>
-		<array>
-			<string>thermalmonitord</string>
+			<string>com.apple.Preferences</string>
 		</array>
 	</dict>
 </dict>
