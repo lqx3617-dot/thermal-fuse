@@ -38,7 +38,7 @@ jobs:
 
       - name: 装 iOS 工具链
         run: |
-          curl -sL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
+          curl -sL https://github.com/L1ghtmann/llvm-project/releases/download/main-update_3-eabca92/iOSToolchain-x86_64.tar.xz \
             | tar -xJ -C "$THEOS/toolchain/"
           "$THEOS/toolchain/linux/iphone/bin/clang" --version | head -2
           ls "$THEOS/toolchain/linux/iphone/bin" | head
@@ -62,6 +62,9 @@ jobs:
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide 2>&1 | tee /tmp/build.log | tail -120
           echo "--- packages ---"
           ls -l packages/
+          echo "--- dylib 架构 ---"
+          rm -rf /tmp/chk && mkdir -p /tmp/chk && dpkg-deb -R packages/*.deb /tmp/chk
+          file /tmp/chk/Library/MobileSubstrate/DynamicLibraries/ThermalFuse.dylib || true
           dpkg-deb -c packages/*.deb
 
       - name: 诊断（失败时打印预处理结果）
