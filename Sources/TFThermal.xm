@@ -1,6 +1,4 @@
 // ThermalFuse — thermalmonitord 侧：档位引擎、定时切档、自检、温控解除
-#define TF_PROBE 1
-
 #import "TFCore.h"
 #import <substrate.h>
 #import <objc/runtime.h>
@@ -188,8 +186,9 @@ static void TFStartSelfTest(void) {
         TFSampleOnce();
         n++;
         if (n >= 15) {
-            dispatch_source_cancel(gTestTimer);
-            gTestTimer = nil;
+            dispatch_source_t t = gTestTimer;
+            gTestTimer = nil;              // 先松引用
+            if (t) dispatch_source_cancel(t);  // 再取消，避免回调里释放自己
             TFFinishSelfTest();
             TFPostNotify(TF_NOTIFY_RELOAD);
         }
@@ -311,6 +310,7 @@ static TFSetIntFn tfOrigMaxPkg = NULL;
 static TFSetBoolFn tfOrigCPMS = NULL;
 
 static id tf_initProduct(id self, SEL _cmd, id arg) {
+    // 拿不到原实现就绝不能返回 nil，否则会把系统初始化打断
     if (!tfOrigInitProduct) return nil;
     id r = tfOrigInitProduct(self, _cmd, arg);
     if (r) {
@@ -497,6 +497,40 @@ static void TFInstallClassHooks(void) {
 }
 
 %ctor {
-    NSLog(@"[ThermalFuse] MINIMAL probe loaded in %@ pid=%d",
-          [[NSProcessInfo processInfo] processName], getpid());
+    TFReloadPrefs();
+    TFWriteHeartbeat();
+    TFEvent(@"loaded in %@ pid=%d", [[NSProcessInfo processInfo] processName], getpid());
+
+    if (!TFIsThermalmonitord()) return;
+    if (!TFBool(@"enabled", YES)) return;
+
+    TFInstallClassHooks();
+
+    if (TFBool(@"engineEnabled", NO)) {
+        TFInstallManualHooks();
+    } else {
+        TFEvent(@"档位引擎未开启");
+    }
+
+    if (TFBool(@"patchThermalPlist", YES)) {
+        TFInstallDictHook();
+    }
+
+    TFStartTick();
+
+    if (TFBool(@"selfTestOnStart", YES)) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 6ull * NSEC_PER_SEC),
+                       dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+            TFStartSelfTest();
+        });
+    }
+
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    NULL, TFOnNotify,
+                                    CFSTR(TF_NOTIFY_RELOAD), NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    NULL, TFOnNotify,
+                                    CFSTR(TF_NOTIFY_SELFTEST), NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
 }

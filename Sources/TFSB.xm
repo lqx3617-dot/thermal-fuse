@@ -1,7 +1,5 @@
-// ThermalFuse — SpringBoard 侧：只干一件事，把前台 App 的 bundle id 报出去。
-// 不 hook 任何 SB 私有方法，只挂通知，最坏情况是功能失效而不是白苹果。
-#define TF_PROBE 1
-
+// ThermalFuse — SpringBoard 侧
+// 只挂通知，不 hook 任何私有方法：这里崩的代价是整个安全模式。
 #import "TFCore.h"
 
 static void TFReportForeground(NSString *bid) {
@@ -36,5 +34,38 @@ static void TFHandleAppNote(NSNotification *note) {
 }
 
 %ctor {
-    NSLog(@"[ThermalFuse] MINIMAL probe sb loaded pid=%d", getpid());
+    @try {
+        TFReloadPrefs();
+        TFEvent(@"SB loaded pid=%d", getpid());
+    } @catch (NSException *e) {
+        NSLog(@"[ThermalFuse] SB 初始化异常: %@", e);
+    }
+
+    if (!TFIsSpringBoard()) return;
+
+    if (!TFBool(@"sbEnabled", YES)) {
+        NSLog(@"[ThermalFuse] SpringBoard 侧被 sbEnabled 关掉");
+        return;
+    }
+
+    // 延迟挂通知，避开 SpringBoard 启动最乱的那两秒
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2ull * NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{
+        @try {
+            NSLog(@"[ThermalFuse] SpringBoard 通知已挂");
+            for (NSString *name in @[@"SBApplicationDidBecomeActiveNotification",
+                                     @"SBApplicationDidChangeForegroundNotification",
+                                     @"UIApplicationDidBecomeActiveNotification"]) {
+                [[NSNotificationCenter defaultCenter]
+                    addObserverForName:name
+                                object:nil
+                                 queue:[NSOperationQueue mainQueue]
+                            usingBlock:^(NSNotification *note) {
+                    TFHandleAppNote(note);
+                }];
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[ThermalFuse] SpringBoard 挂通知异常: %@", e);
+        }
+    });
 }
