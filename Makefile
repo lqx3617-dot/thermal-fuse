@@ -1,11 +1,12 @@
 TARGET := iphone:clang:latest:15.0
-ARCHS = arm64
+ARCHS = arm64 arm64e
 INSTALL_TARGET_PROCESSES = thermalmonitord SpringBoard
 
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = ThermalFuse
 ThermalFuse_FILES = Sources/TFCore.m Sources/TFThermal.xm Sources/TFSB.xm
+ThermalFuse_USE_MODULES = 0
 ThermalFuse_CFLAGS = -fobjc-arc -ISources
 ThermalFuse_FRAMEWORKS = Foundation UIKit
 

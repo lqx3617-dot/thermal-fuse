@@ -13,7 +13,7 @@ jobs:
   roothide:
     # macOS runner 在这个账号上分配不到（job 秒 cancelled），
     # 所以走 Linux + theos 官方 Linux 工具链，编出来的 Mach-O 完全一样。
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential fakeroot rsync curl perl zip unzip git \
-            libxml2 libtinfo5 dpkg-dev xz-utils ca-certificates
+            libxml2 libtinfo6 dpkg-dev xz-utils ca-certificates
           # Ubuntu 仓库里没有 ldid，用 Procursus 官方 linux 二进制
           curl -sL -o /tmp/ldid \
             https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus8/ldid_linux_x86_64
@@ -38,8 +38,14 @@ jobs:
 
       - name: 装 iOS 工具链
         run: |
-          curl -sL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
+          curl -sL https://github.com/L1ghtmann/llvm-project/releases/download/main-update_3-eabca92/iOSToolchain-x86_64.tar.xz \
             | tar -xJ -C "$THEOS/toolchain/"
+          # clang 19 的包里缺 libc++ 的 __config_site，补一个最小的
+          CXXDIR="$THEOS/toolchain/linux/iphone/include/c++/v1"
+          if [ -d "$CXXDIR" ] && [ ! -f "$CXXDIR/__config_site" ]; then
+            printf '#define _LIBCPP_ABI_VERSION 1\n#define _LIBCPP_ABI_NAMESPACE __1\n' > "$CXXDIR/__config_site"
+            echo "created __config_site"
+          fi
           "$THEOS/toolchain/linux/iphone/bin/clang" --version | head -2
           ls "$THEOS/toolchain/linux/iphone/bin" | head
 
