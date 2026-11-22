@@ -36,48 +36,5 @@ static void TFHandleAppNote(NSNotification *note) {
 }
 
 %ctor {
-    @try {
-        TFReloadPrefs();
-        TFWriteHeartbeat();
-    } @catch (NSException *e) {
-        TFEvent(@"SB 读偏好异常: %@", e);
-    }
-
-    if (!TFIsSpringBoard()) return;
-
-#if TF_PROBE
-    TFEvent(@"PROBE sb loaded pid=%d", getpid());
-    return;
-#endif
-
-    // 总闸：万一 SpringBoard 侧把系统搞进安全模式，先关这里，不用卸载
-    if (!TFBool(@"sbEnabled", YES)) {
-        TFEvent(@"SpringBoard 侧被 sbEnabled 关掉了");
-        return;
-    }
-
-    // 启动期不做任何事，延迟 2 秒再挂通知，避开 SpringBoard 初始化最乱的那段
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2ull * NSEC_PER_SEC),
-                   dispatch_get_main_queue(), ^{
-        @try {
-            TFEvent(@"SpringBoard 侧加载");
-            for (NSString *name in @[@"SBApplicationDidBecomeActiveNotification",
-                                     @"SBApplicationDidChangeForegroundNotification",
-                                     @"UIApplicationDidBecomeActiveNotification"]) {
-                [[NSNotificationCenter defaultCenter]
-                    addObserverForName:name
-                                object:nil
-                                 queue:[NSOperationQueue mainQueue]
-                            usingBlock:^(NSNotification *note) {
-                    @try {
-                        TFHandleAppNote(note);
-                    } @catch (NSException *e) {
-                        TFLog(@"通知处理异常: %@", e);
-                    }
-                }];
-            }
-        } @catch (NSException *e) {
-            TFEvent(@"SpringBoard 初始化异常: %@", e);
-        }
-    });
+    NSLog(@"[ThermalFuse] MINIMAL probe sb loaded pid=%d", getpid());
 }

@@ -497,44 +497,6 @@ static void TFInstallClassHooks(void) {
 }
 
 %ctor {
-    TFReloadPrefs();
-    TFWriteHeartbeat();
-    TFEvent(@"PROBE loaded in %@ pid=%d", [[NSProcessInfo processInfo] processName], getpid());
-
-#if TF_PROBE
-    return;   // 探针模式：只证明 dylib 能加载，不装任何 hook
-#endif
-
-    if (!TFIsThermalmonitord()) return;
-    if (!TFBool(@"enabled", YES)) return;
-
-    TFInstallClassHooks();
-
-    if (TFBool(@"engineEnabled", NO)) {
-        TFInstallManualHooks();
-    } else {
-        TFEvent(@"档位引擎未开启（高级设置里可以开）");
-    }
-
-    if (TFBool(@"patchThermalPlist", YES)) {
-        TFInstallDictHook();
-    }
-
-    TFStartTick();
-
-    if (TFBool(@"selfTestOnStart", YES)) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 6ull * NSEC_PER_SEC),
-                       dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-            TFStartSelfTest();
-        });
-    }
-
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
-                                    NULL, TFOnNotify,
-                                    CFSTR(TF_NOTIFY_RELOAD), NULL,
-                                    CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
-                                    NULL, TFOnNotify,
-                                    CFSTR(TF_NOTIFY_SELFTEST), NULL,
-                                    CFNotificationSuspensionBehaviorDeliverImmediately);
+    NSLog(@"[ThermalFuse] MINIMAL probe loaded in %@ pid=%d",
+          [[NSProcessInfo processInfo] processName], getpid());
 }

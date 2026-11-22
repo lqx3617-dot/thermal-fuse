@@ -7,7 +7,6 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = ThermalFuse
 ThermalFuse_FILES = Sources/TFCore.m Sources/TFThermal.xm Sources/TFSB.xm
 ThermalFuse_USE_MODULES = 0
-ThermalFuse_LDFLAGS = -lsubstrate
 ThermalFuse_CFLAGS = -fobjc-arc -ISources
 ThermalFuse_FRAMEWORKS = Foundation UIKit
 
