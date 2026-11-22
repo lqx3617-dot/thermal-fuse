@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 BUNDLE_NAME = ThermalFusePrefs
 ThermalFusePrefs_FILES = TFPrefsRootListController.m
 ThermalFusePrefs_INSTALL_PATH = /Library/PreferenceBundles
-ThermalFusePrefs_FRAMEWORKS = UIKit
+ThermalFusePrefs_FRAMEWORKS = UIKit CoreGraphics
 ThermalFusePrefs_USE_MODULES = 0
 ThermalFusePrefs_CFLAGS = -fobjc-arc
 
